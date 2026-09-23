@@ -1,4 +1,4 @@
-# Ветропрогноз
+# Ветропрогноз — агентный почасовой прогноз выработки ВЭС на 48 часов
 
 Windmill management, hourly power forecasting, and an interactive 3D map.
 React/TypeScript frontend, Python API, MongoDB storage, and Celery workers with
