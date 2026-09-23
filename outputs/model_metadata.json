@@ -1,0 +1,28 @@
+{
+  "model_version": "hgb-v1-train-before-20251201",
+  "train_rows": 45784,
+  "train_start_utc": "2023-03-11T00:00:00+00:00",
+  "train_last_target_utc": "2025-11-30T18:00:00+00:00",
+  "train_last_available_at_utc": "2025-11-30T19:00:00+00:00",
+  "train_cutoff_exclusive_utc": "2025-11-30T19:00:00+00:00",
+  "validation_end_exclusive_utc": "2026-01-31T19:00:00+00:00",
+  "features": [
+    "wind_speed_100m",
+    "wind_speed_10m",
+    "wind_gusts_10m",
+    "temperature_2m",
+    "surface_pressure",
+    "wind_direction_sin",
+    "wind_direction_cos",
+    "hour_sin",
+    "hour_cos",
+    "year_sin",
+    "year_cos",
+    "turbine_id"
+  ],
+  "power_unit": "normalized_0_1",
+  "validation_design": "daily local midnight origins; h=1..48; common target rows; fixed origin persistence",
+  "weather_source": "Open-Meteo Historical Forecast stitched archive, ecmwf_ifs",
+  "run_aware_backtest": false,
+  "limitation": "Stitched weather uses short leads and cannot prove availability at each origin; not a leakage-free 48h forecast score."
+}
