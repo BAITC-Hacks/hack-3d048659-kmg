@@ -6,67 +6,40 @@
 Общая погодная точка: 43.644174, 78.537216; возвращённая Open-Meteo высота — 555 м.
 Погода загружается один раз для общей точки и повторно используется обеими турбинами.
 
-## Dashboard API
+## Dashboard API and background training
 
-Из `backend/`, после установки зависимостей:
+The dashboard now uses MongoDB and Celery. Start the full stack using the root
+[README](../README.md) or [deployment guide](../DEPLOYMENT.md). The original
+research pipeline described below remains available for archive reproduction.
 
-```powershell
-python -m src.api --host 127.0.0.1 --port 8000
-```
+- `GET /api/workspace` returns `{turbines, runs, observations, meta}`.
+- `POST /api/turbines` adds a named windmill with latitude/longitude and optional
+  `ratedPowerKw`.
+- `POST /api/turbines/:id/actuals` validates and upserts normalized hourly power,
+  increments the data revision, and durably queues training in one transaction.
+- `POST /api/turbines/:id/train` explicitly queues training of the latest data.
+- `GET /api/calculations?turbine=:id` and `/api/calculations/:id` report status,
+  revisions, model/forecast IDs and validation metrics.
+- `POST /api/forecasts` now accepts `{turbine}` and returns a background job.
+  Synchronous `{origin}` archive recalculation remains available through the
+  offline tools, not the default dashboard API.
 
-Это локальный HTTP-сервис на стандартной библиотеке Python. Фронтенд обращается
-к нему через same-origin прокси `/api`; запуск фронтенда описан в корневом README.
-Для контейнера используйте `--host 0.0.0.0`. Сервис предназначен для локальной
-разработки/демонстрации; внешний доступ организуется через веб-прокси.
+`src/fleet/` owns validation, MongoDB storage, the per-windmill training model,
+and Celery tasks. `src/api/` handles HTTP and retains the legacy injected
+filesystem service for offline tests. New training has no January cutoff and
+uses each windmill's power history. No synthetic measurements or weather are
+introduced. See [DATA_ARCHITECTURE.md](../DATA_ARCHITECTURE.md) for model features,
+minimum data requirements, transaction/lease rules, indexes and API contracts.
 
-- `GET /api/health` → `{"status":"ok"}`.
-- `GET /api/workspace` → `{runs, observations, meta}`: 58 сохранённых прогнозов
-  (29 origins × 2 турбины), доступные январские измерения и сведения об источнике.
-- `POST /api/forecasts` с `Content-Type: application/json` и телом
-  `{"origin":"2026-01-30T19:00:00Z"}` пересчитывает обе турбины для выбранного
-  существующего origin и возвращает обновлённый `/api/workspace`.
-  Принимаются только origins из сохранённого архива в диапазоне `config.yaml`,
-  с явно указанной временной зоной; дополнительные поля отклоняются (422).
+The first API startup imports the bundled archive once into MongoDB. Later
+uploads and model versions persist in the database; restarting the API does not
+reimport or overwrite them. MongoDB must run as a replica set. Redis transports
+job IDs, while MongoDB retains authoritative job status and results.
 
-Каждый `run` содержит `id`, `turbine` (`t1`/`t2`), `issuedAt`, `weatherIssuedAt`,
-`weatherAvailableAt`, `horizon` (48), `status`, `reason`, `modelVersion`,
-`fallbackUsed`, `method`, `weatherSource` и `points: [{time, power, wind, temperature}]`.
-Все даты — UTC с `Z`; мощность нормализована в [0,1], ветер в м/с, температура в °C.
-Ветер и температура берутся только из кеша именно того погодного выпуска,
-который указан в прогнозе. Если данных нет, возвращается `null`; GET не вызывает сеть.
-Метод `persistence` не использует погоду и всегда возвращает для неё `null`.
-Доступность погодного выпуска — через 6 часов после его инициализации.
-
-`observations` содержит `{turbine, updatedAt, points: [{time, power}]}` для каждой
-турбины. Пропущенные измерения не заменяются нулями. `updatedAt` — конец последнего
-часового интервала (время доступности наблюдения); `meta.actualsThrough` — начало
-последнего доступного часового интервала, сейчас `2026-01-31T18:00:00Z`.
-Февральские фактические значения отсутствуют.
-
-Пересчёт использует существующий агент и модели без изменения их логики.
-Переопределения прогнозов вместе с использованной погодой сохраняются атомарно
-в `.runtime/forecasts.json`, журналы — в `.runtime/agent_runs.jsonl`, новые погодные
-кеши — в `.runtime/weather_cache/`. Закоммиченные CSV, модели и кеши не меняются.
-Повторный расчёт обновляет стабильные ID, а перезапуск сервера сохраняет результат.
-Одновременные запросы сериализованы внутри одного процесса сервера.
-Ошибки API имеют форму `{"error":{"code":"...","message":"..."}}`.
-Для POST браузерный `Origin` должен соответствовать заголовку `Host`, поэтому
-прокси должен сохранять исходный `Host` (в Vite `changeOrigin: false`).
-
-API разделён по границам clean architecture:
-
-- `src/api/domain.py` — типы данных, ошибки валидации и порты `ForecastRepository` /
-  `ForecastEngine`, без зависимостей от HTTP, pandas и файловой системы.
-- `src/api/application.py` — сценарии чтения и пересчёта, проверка origin,
-  сериализация запросов; зависимости передаются через порты.
-- `src/api/infrastructure.py` — файловое хранилище, чтение погодного кеша,
-  атомарная запись результатов и адаптер существующего `reforecast`.
-- `src/api/server.py` — HTTP, проверка тела и Origin, перевод ошибок в JSON,
-  сборка зависимостей. `src/api/__main__.py` — CLI запуска сервера.
-
-Прогнозная модель, признаки, защитные проверки доступности данных и CLI-команды
-сохраняют существующее поведение. Тесты API проверяют сценарии через подставные
-порты, реальные архивные данные, HTTP-границу и изоляцию записей в `.runtime`.
+All dates are UTC; power is normalized to `[0,1]`. Browser writes require the
+same-origin JSON proxy, preserving the original Host header. Errors retain
+`{error:{code,message}}`. There is no silent filesystem fallback when MongoDB
+is unavailable.
 
 ## Reproduce from scratch
 

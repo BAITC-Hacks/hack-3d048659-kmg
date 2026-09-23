@@ -62,7 +62,7 @@ export default function HistoryPage({
               {selectedRunHistory.map((r) => (
                 <tr
                   key={r.id}
-                  className={r.id === run.id ? "highlight-row" : ""}
+                  className={r.id === run?.id ? "highlight-row" : ""}
                 >
                   <th>
                     <span className="run-date">

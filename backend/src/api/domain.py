@@ -2,7 +2,7 @@
 from typing import Literal, Protocol, TypedDict
 
 WEATHER_SOURCE = 'Open-Meteo Single Runs API (ECMWF IFS)'
-TurbineId = Literal['t1', 't2']
+TurbineId = str
 
 
 class ForecastPoint(TypedDict):

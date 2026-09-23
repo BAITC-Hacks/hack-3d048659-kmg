@@ -1,15 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
-import { fetchWorkspace, recalculateForecast } from "../data/api";
+import { fetchWorkspace, queueTraining } from "../data/api";
 import type { ForecastRun, Horizon, TurbineId, WorkspaceData } from "../domain/forecast";
-import { stamp } from "../lib/format";
 import { navigation, readLocation } from "./navigation";
 import type { Page } from "./navigation";
 
 export function useForecastWorkspace(initialData: WorkspaceData) {
   const [data, setData] = useState(initialData);
-  const { runs, observations } = data;
-  const initial = useRef(readLocation(initialData.runs)).current;
+  const { runs, observations, turbines } = data;
+  const initial = useRef(readLocation(initialData.runs, window.location, initialData.turbines)).current;
   const [page, setPage] = useState<Page>(initial.page);
   const [turbine, setTurbine] = useState<TurbineId>(initial.turbine);
   const [runId, setRunId] = useState(initial.runId);
@@ -28,13 +27,13 @@ export function useForecastWorkspace(initialData: WorkspaceData) {
   const replayButtonRef = useRef<HTMLButtonElement>(null);
   const requestRef = useRef<AbortController | null>(null);
   const run = runs.find((item) => item.id === runId && item.turbine === turbine)
-    || runs.find((item) => item.turbine === turbine)!;
+    || runs.find((item) => item.turbine === turbine);
   const releases = runs.filter((item) => item.turbine === turbine && item.status === "success")
     .sort((a, b) => a.issuedAt.localeCompare(b.issuedAt));
-  const points = run.points.slice(0, horizon);
+  const points = run?.points.slice(0, horizon) ?? [];
   const selected = points[Math.min(hour, points.length - 1)];
-  const peak = points.reduce((a, b) => a.power > b.power ? a : b);
-  const previous = releases.filter((item) => item.issuedAt < run.issuedAt).at(-1);
+  const peak = points.length ? points.reduce((a, b) => a.power > b.power ? a : b) : undefined;
+  const previous = releases.filter((item) => item.issuedAt < (run?.issuedAt ?? "")).at(-1);
   const comparison = points.map((point) => ({
     ...point, previous: previous?.points.find((old) => old.time === point.time)?.power,
   })).filter((point) => point.previous !== undefined);
@@ -51,13 +50,13 @@ export function useForecastWorkspace(initialData: WorkspaceData) {
   useEffect(() => { history.replaceState(null, "", url()); }, [page, turbine, runId, horizon]);
   useEffect(() => {
     const handlePop = () => {
-      const next = readLocation(runs);
+      const next = readLocation(runs, window.location, turbines);
       setPage(next.page); setTurbine(next.turbine); setRunId(next.runId); setHorizon(next.horizon);
     };
     window.addEventListener("popstate", handlePop);
     return () => window.removeEventListener("popstate", handlePop);
-  }, [runs]);
-  useEffect(() => { setHour(12); }, [run.issuedAt]);
+  }, [runs, turbines]);
+  useEffect(() => { setHour(12); }, [run?.issuedAt]);
   useEffect(() => { setHour((current) => Math.min(current, horizon - 1)); }, [horizon]);
   useEffect(() => () => requestRef.current?.abort(), []);
   useEffect(() => {
@@ -79,19 +78,35 @@ export function useForecastWorkspace(initialData: WorkspaceData) {
     }
   }
   function changeTurbine(next: TurbineId) {
-    const equivalent = runs.find((item) => item.turbine === next && item.issuedAt === run.issuedAt)
+    const equivalent = runs.find((item) => item.turbine === next && item.issuedAt === run?.issuedAt)
       || runs.filter((item) => item.turbine === next).sort((a, b) => b.issuedAt.localeCompare(a.issuedAt))[0];
-    if (equivalent) { setTurbine(next); setRunId(equivalent.id); }
+    setTurbine(next); setRunId(equivalent?.id ?? "");
   }
   function applyData(next: WorkspaceData) {
-    if (!next.runs.length) throw new Error("В архиве пока нет прогнозов. Предыдущие данные остаются на экране.");
     setData(next);
+    if (!next.turbines.some((site) => site.id === turbine)) {
+      setTurbine(next.turbines[0]?.id ?? "");
+      setRunId(next.runs.find((item) => item.turbine === next.turbines[0]?.id)?.id ?? "");
+      return;
+    }
     if (!next.runs.some((item) => item.id === runId && item.turbine === turbine)) {
       const replacement = next.runs.filter((item) => item.turbine === turbine)
         .sort((a, b) => b.issuedAt.localeCompare(a.issuedAt))[0];
-      setRunId(replacement.id);
+      setRunId(replacement?.id ?? "");
     }
   }
+  useEffect(() => {
+    if (!turbines.some((site) => site.trainingStatus === "queued" || site.trainingStatus === "running")) return;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      try { const next = await fetchWorkspace(controller.signal); if (!controller.signal.aborted) applyData(next); }
+      catch { /* The manual refresh keeps its explicit error reporting. */ }
+      if (!controller.signal.aborted) timer = setTimeout(poll, 5000);
+    };
+    timer = setTimeout(poll, 3000);
+    return () => { controller.abort(); clearTimeout(timer); };
+  }, [turbines, turbine, runId]);
   async function refreshData() {
     if (requestRef.current) return;
     const controller = new AbortController(); requestRef.current = controller;
@@ -110,15 +125,15 @@ export function useForecastWorkspace(initialData: WorkspaceData) {
   }
   async function startRecalculation() {
     if (requestRef.current) return;
-    const target = updateRun ?? run;
     const controller = new AbortController(); requestRef.current = controller;
     setRunning(true); setRequestError(""); setNotice("");
     try {
-      const next = await recalculateForecast(target.issuedAt, controller.signal);
+      await queueTraining(turbine, controller.signal);
+      const next = await fetchWorkspace(controller.signal);
       if (controller.signal.aborted) return;
       applyData(next); setUpdateOpen(false); setNoticeWarning(false);
-      setNotice("Прогноз на " + stamp(target.issuedAt) + " UTC пересчитан для обеих турбин и сохранён на сервере.");
-      navigate("forecast", target.id, target.turbine); replayButtonRef.current?.focus();
+      setNotice("Обучение поставлено в очередь. Статус расчёта обновляется автоматически.");
+      navigate("turbines"); replayButtonRef.current?.focus();
     } catch (error) {
       if (controller.signal.aborted) return;
       setRequestError(error instanceof Error ? error.message : "Не удалось пересчитать прогноз.");
@@ -133,7 +148,7 @@ export function useForecastWorkspace(initialData: WorkspaceData) {
   }
   function openUpdate() {
     if (requestRef.current) return;
-    setUpdateRun(run); setRequestError(""); setUpdateOpen(true);
+    setUpdateRun(run ?? null); setRequestError(""); setUpdateOpen(true);
   }
   const chartClick = (index: unknown) => {
     const parsed = Number(index);
@@ -141,7 +156,7 @@ export function useForecastWorkspace(initialData: WorkspaceData) {
       setHour(Math.max(0, Math.min(points.length - 1, parsed)));
   };
   return {
-    runs, observations, page, turbine, horizon, hour, notice, noticeWarning, requestError, updateRun,
+    runs, observations, turbines, applyData, page, turbine, horizon, hour, notice, noticeWarning, requestError, updateRun,
     comparisonOpen, historyFilter, dialogRef, replayButtonRef, run, releases,
     points, selected, peak, previous, comparison, delta, selectedRunHistory,
     running, refreshing, turbineObservations, meta: data.meta,

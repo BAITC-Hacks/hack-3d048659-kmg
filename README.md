@@ -1,89 +1,81 @@
 # Ветропрогноз
 
-React dashboard connected to a Python forecasting backend for two wind turbines.
-The forecast, weather, and history screens use the repository's saved model outputs,
-archived ECMWF IFS weather, and measured power. Power is normalized to `[0, 1]`;
-it is not MW or MWh. All displayed timestamps are UTC.
+Windmill management, hourly power forecasting, and an interactive 3D map.
+React/TypeScript frontend, Python API, MongoDB storage, and Celery workers with
+Redis transport. Power is normalized to `[0, 1]`; all displayed times are UTC.
 
-## Available data
+## Run the complete application
 
-- 29 forecast origins from `2026-01-30T19:00Z` through `2026-02-27T19:00Z`
-  (local midnights January 31 through February 28, UTC+05:00).
-- Each origin contains 48 hourly predictions for each turbine. Target hours extend
-  into early March at the end of the archive.
-- Observations exposed to the dashboard cover January 2026. Source measurements
-  stop on January 31 local time; February actuals and February evaluation metrics
-  are unavailable. Missing observations remain missing.
-- Recalculation runs the existing forecasting pipeline for a selected archived
-  origin and both turbines. The API does not forecast for today's date.
+From the repository root, with Docker Desktop / Docker Compose running:
 
-## Run locally
-
-Use Python 3.11 and Node.js 22.12 or newer (Node.js 24 is used by the container).
-Run the backend in one terminal from the repository root:
-
-```powershell
-cd backend
-py -3.11 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe -m src.api --host 127.0.0.1 --port 8000
+```bash
+docker compose up --build -d --wait
 ```
 
-On Linux/macOS, use `python3.11 -m venv .venv` and `.venv/bin/python` in place
-of the Windows commands. The exact versions in `backend/requirements.txt` are
-needed to load the saved models.
+Open [http://127.0.0.1:8088](http://127.0.0.1:8088). MongoDB and Redis stay on the
+private container network. The first startup imports the bundled two-windmill
+archive into MongoDB; subsequent starts preserve uploaded data and models.
 
-In another terminal:
+## Windmills and measurements
 
-```powershell
+Open **Ветряки и данные** to add a windmill with its name and coordinates. It
+immediately becomes selectable and appears on the 3D map, even without data.
+Upload hourly CSV measurements or correct an individual hour:
+
+```csv
+time,power
+2026-03-01T00:00:00Z,0.42
+2026-03-01T01:00:00Z,0.38
+```
+
+Imports update matching hours and preserve other measurements. Every changed
+import automatically queues retraining and a new 48-hour forecast. The page
+shows queued/running/completed/failed jobs, input revisions, and validation
+metrics. Previous model versions and forecasts remain available.
+
+The new per-windmill model uses power history and calendar features, without
+inventing weather for new sites. Start with at least five consecutive days of
+hourly measurements. Insufficient data is reported explicitly and remains saved
+for the next upload. Forecasts begin relative to the latest measured hour;
+training on old data does not produce a forecast for today's date.
+
+## Bundled archive
+
+The initial archive contains 29 forecast origins (January 30–February 27, 2026),
+48 predictions per turbine per origin, and January measurements for two turbines.
+These original weather-based forecasts are retained. The original offline
+research/model scripts are documented in [backend/README.md](backend/README.md).
+
+## Frontend development
+
+Run the backend, database, workers, and scheduler in containers while Vite runs
+on the host:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d backend worker scheduler
 cd frontend
 npm ci
 npm run dev
 ```
 
-Open [http://127.0.0.1:5173](http://127.0.0.1:5173). Vite forwards `/api` to
-the backend on port 8000. Both processes must run. An API failure appears in
-the dashboard with a retry action.
+Open [http://127.0.0.1:5173](http://127.0.0.1:5173). The development override
+publishes the API on loopback port 8000 for Vite's existing proxy. Use Node 22.12+
+(Node 24 recommended). Stop any older API using port 8000 before this setup.
 
-For the container setup, run `docker compose up --build -d --wait` from the
-repository root and open [http://127.0.0.1:8088](http://127.0.0.1:8088).
-See [deployment instructions](DEPLOYMENT.md) for configuration and verification.
+## Documentation and checks
 
-## Project structure
+- [Data architecture, collections, training and API](DATA_ARCHITECTURE.md)
+- [Deployment, persistence and integration checks](DEPLOYMENT.md)
+- [Frontend source boundaries and commands](frontend/README.md)
 
-| Directory | Contents |
-| --- | --- |
-| [`frontend/`](frontend/README.md) | React application, API adapter, UI tests, and nginx configuration |
-| [`backend/`](backend/README.md) | HTTP API, forecast pipeline, tests, configuration, archived inputs, and models |
-| `backend/.runtime/` | Local API recalculations, run logs, and any additional weather cache; ignored by Git |
-
-The API reads committed results from `backend/outputs/`. API recalculations
-persist separate runtime overrides without changing those reference results.
-Reproducing or training the original pipeline through its command-line tools
-is documented in [backend/README.md](backend/README.md).
-
-## API
-
-| Method and route | Behavior |
-| --- | --- |
-| `GET /api/health` | Returns `{ "status": "ok" }` |
-| `GET /api/workspace` | Returns `{ runs, observations, meta }` for the dashboard |
-| `POST /api/forecasts` | Accepts `{ "origin": "2026-01-30T19:00:00Z" }`, recalculates both turbines, and returns the updated workspace |
-
-POST requests use `Content-Type: application/json`. Origins must match an
-existing archived origin. Errors return `{ "error": { "code", "message" } }`
-with an appropriate HTTP status. Browser requests use the frontend's same-origin
-proxy; cross-origin writes are rejected.
-
-## Verification
-
-```powershell
-cd backend
-.\.venv\Scripts\python.exe -m pytest -p no:cacheprovider
-cd ../frontend
+```bash
+cd frontend
 npm test
 npm run build
+npm run docker:check
 ```
 
-After starting the container stack, run `npm run docker:check` from `frontend/`
-to check the UI, API, forecast data, and static asset delivery.
+Backend unit tests run with `python -m pytest -p no:cacheprovider` from `backend/`
+after installing `requirements.txt`. Real MongoDB integration tests are enabled
+with `MONGODB_TEST_URI`; they create and remove isolated `windfarm_test_*`
+databases. See deployment instructions for running them inside the stack.

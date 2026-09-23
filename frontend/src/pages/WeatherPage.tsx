@@ -42,9 +42,10 @@ export default function WeatherPage({
   hour,
   setHour,
 }: WeatherPageProps) {
+  if (!run || !selected) return null;
   const hasWeather = points.some((point) => point.wind !== null || point.temperature !== null);
   const incompleteWeather = points.some((point) => point.wind === null || point.temperature === null);
-  const usesWeather = run.method !== "persistence";
+  const usesWeather = run.method !== "persistence" && run.method !== "autoregressive";
 
   return (
     <>
@@ -60,7 +61,7 @@ export default function WeatherPage({
           <p>
             {usesWeather
               ? "Прогноз сохранён, но почасовые значения погоды отсутствуют в локальном архиве."
-              : "Резервный метод сохраняет последнее доступное значение мощности. Ветер и температура для этого расчёта не использовались."}
+                : "Модель использует историю мощности. Ветер и температура для этого расчёта не использовались."}
           </p>
           <button className="button primary" onClick={openUpdate}>
             <RefreshCw size={16} />

@@ -1,8 +1,51 @@
 services:
+  mongo:
+    image: mongo:8.0
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mongo-init:
+    image: mongo:8.0
+    depends_on:
+      mongo:
+        condition: service_healthy
+    entrypoint: ["mongosh", "--host", "mongo", "--quiet", "--eval"]
+    command:
+      - "try { rs.status() } catch (e) { rs.initiate({_id:'rs0',members:[{_id:0,host:'mongo:27017'}]}) }; while (!db.hello().isWritablePrimary) { sleep(500) }"
+    restart: "no"
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   backend:
     build:
       context: ./backend
     restart: unless-stopped
+    environment: &backend-environment
+      MONGODB_URI: mongodb://mongo:27017/?replicaSet=rs0
+      MONGODB_DATABASE: windfarm
+      CELERY_BROKER_URL: redis://redis:6379/0
+    depends_on:
+      mongo-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
     read_only: true
     tmpfs:
       - /tmp
@@ -14,6 +57,36 @@ services:
       timeout: 5s
       start_period: 30s
       retries: 3
+
+  worker:
+    build:
+      context: ./backend
+    command: ["celery", "-A", "src.fleet.tasks:app", "worker", "--loglevel=info", "--concurrency=2"]
+    environment: *backend-environment
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      disable: true
+
+  scheduler:
+    build:
+      context: ./backend
+    command: ["celery", "-A", "src.fleet.tasks:app", "beat", "--loglevel=info", "--schedule=/tmp/celerybeat-schedule"]
+    environment: *backend-environment
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      disable: true
 
   frontend:
     build:
@@ -36,3 +109,5 @@ services:
 
 volumes:
   backend-runtime:
+  mongo-data:
+  redis-data:

@@ -2,9 +2,7 @@ import { MercatorCoordinate } from "maplibre-gl";
 import type { CustomLayerInterface, Map as LibreMap, MapMouseEvent } from "maplibre-gl";
 import * as THREE from "three";
 import type { TurbineId } from "../../domain/forecast";
-import { turbineSites } from "../../domain/map";
-
-export const parkCenter: [number, number] = [78.537216, 43.644174];
+import type { TurbineSite } from "../../domain/map";
 
 function windmill() {
   const group = new THREE.Group();
@@ -38,8 +36,8 @@ function windmill() {
   return { group, ring };
 }
 
-export function createTurbineLayer(onSelect: (id: TurbineId) => void) {
-  const origin = MercatorCoordinate.fromLngLat(parkCenter);
+export function createTurbineLayer(sites: TurbineSite[], onSelect: (id: TurbineId) => void) {
+  const origin = MercatorCoordinate.fromLngLat(sites[0]?.coordinates ?? [0, 0]);
   const scale = origin.meterInMercatorCoordinateUnits();
   const modelMatrix = new THREE.Matrix4().makeTranslation(origin.x, origin.y, origin.z)
     .scale(new THREE.Vector3(scale, -scale, scale)).multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2));
@@ -48,7 +46,7 @@ export function createTurbineLayer(onSelect: (id: TurbineId) => void) {
   const sunlight = new THREE.DirectionalLight(0xffffff, 3);
   sunlight.position.set(-100, 180, 100);
   scene.add(new THREE.HemisphereLight(0xe6f2ff, 0x6a7668, 2), sunlight);
-  const models = turbineSites.map((site) => {
+  const models = sites.map((site) => {
     const model = windmill();
     const position = MercatorCoordinate.fromLngLat(site.coordinates);
     model.group.position.set((position.x - origin.x) / scale, 0, (position.y - origin.y) / scale);

@@ -1,10 +1,9 @@
-import type { ForecastRun, ObservationBatch, TurbineId } from "./forecast";
+import type { ForecastRun, ObservationBatch, TurbineId, Turbine } from "./forecast";
 
-// Geographic positions from backend/config.yaml. Model dimensions are illustrative.
-export const turbineSites: { id: TurbineId; coordinates: [number, number] }[] = [
-  { id: "t1", coordinates: [78.535604, 43.645150] },
-  { id: "t2", coordinates: [78.538828, 43.643198] },
-];
+export interface TurbineSite { id: TurbineId; name: string; coordinates: [number, number] }
+export const turbineSites = (turbines: Turbine[]): TurbineSite[] => turbines.map((site) => ({
+  id: site.id, name: site.name, coordinates: [site.longitude, site.latitude],
+}));
 
 export type MapMode = "forecast" | "actual";
 export interface TurbineReading {
@@ -20,15 +19,18 @@ export function observationTimes(observations: ObservationBatch[]): string[] {
 }
 
 export function mapReadings(runs: ForecastRun[], observations: ObservationBatch[],
-  issuedAt: string, time: string | undefined, mode: MapMode): TurbineReading[] {
+  issuedAt: string, time: string | undefined, mode: MapMode,
+  sites: { id: string }[] = [...new Set([...runs, ...observations].map((item) => item.turbine))].map((id) => ({ id })),
+  selectedRunId?: string): TurbineReading[] {
   const target = time ? Date.parse(time) : NaN;
-  return turbineSites.map(({ id }) => {
+  return sites.map(({ id }) => {
     if (mode === "actual") {
       const point = observations.find((batch) => batch.turbine === id)?.points
         .find((point) => Date.parse(point.time) === target);
       return { id, power: point?.power ?? null, wind: null, temperature: null };
     }
-    const run = runs.find((run) => run.turbine === id && run.status === "success"
+    const run = runs.find((run) => run.id === selectedRunId && run.turbine === id && run.status === "success")
+      ?? runs.find((run) => run.turbine === id && run.status === "success"
       && Date.parse(run.issuedAt) === Date.parse(issuedAt));
     const point = run?.points.find((point) => Date.parse(point.time) === target);
     return { id, power: point?.power ?? null, wind: point?.wind ?? null, temperature: point?.temperature ?? null };

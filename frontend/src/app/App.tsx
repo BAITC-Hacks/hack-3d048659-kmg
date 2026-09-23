@@ -9,6 +9,7 @@ import UpdateDialog from "../components/UpdateDialog";
 import ForecastPage from "../pages/ForecastPage";
 import WeatherPage from "../pages/WeatherPage";
 import HistoryPage from "../pages/HistoryPage";
+import TurbinesPage from "../pages/TurbinesPage";
 
 const MapPage = lazy(() => import("../pages/MapPage"));
 
@@ -27,7 +28,7 @@ export default function App() {
     }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [attempt]);
-  if (data?.runs.length) return <Workspace initialData={data} />;
+  if (data) return <Workspace initialData={data} />;
   return <main className="main-shell" id="main">
     <section className="panel state-panel" role={error ? "alert" : "status"}>
       {loading ? <LoaderCircle className="spin" size={32} /> : error ? <TriangleAlert size={32} /> : <Wind size={32} />}
@@ -94,7 +95,7 @@ function Workspace({ initialData }: { initialData: WorkspaceData }) {
           </nav>
           <span className="demo-badge">
             <span />
-            Архивные прогнозы · ECMWF IFS
+            Прогнозы и измерения
           </span>
         </div>
       </header>
@@ -112,6 +113,7 @@ function Workspace({ initialData }: { initialData: WorkspaceData }) {
               : page === "weather"
                 ? "Погодные данные"
                 : page === "map" ? "Ветропарк на карте"
+                : page === "turbines" ? "Ветряки и измерения"
                 : "История расчётов"}
           </h1>
         </section>
@@ -141,11 +143,11 @@ function Workspace({ initialData }: { initialData: WorkspaceData }) {
               onChange={(e) => changeTurbine(e.target.value as TurbineId)}
               disabled={running || refreshing}
             >
-              <option value="t1">Турбина 1</option>
-              <option value="t2">Турбина 2</option>
+              {!workspace.turbines.length && <option value="">Нет ветряков</option>}
+              {workspace.turbines.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}
             </select>
           </label>
-          {page !== "history" && (
+          {run && page !== "history" && page !== "turbines" && (
             <label className="control-field">
               <span>Выпуск прогноза · UTC</span>
               <select value={run.id} disabled={running || refreshing} onChange={(e) => setRunId(e.target.value)}>
@@ -154,7 +156,7 @@ function Workspace({ initialData }: { initialData: WorkspaceData }) {
                 )}
                 {releases.map((r) => (
                   <option key={r.id} value={r.id}>
-                    {stamp(r.issuedAt)}
+                    {stamp(r.issuedAt)}{r.dataRevision !== undefined ? ` · данные v${r.dataRevision}` : ""}
                   </option>
                 ))}
               </select>
@@ -168,20 +170,26 @@ function Workspace({ initialData }: { initialData: WorkspaceData }) {
             ref={replayButtonRef}
             className="button primary page-action"
             onClick={openUpdate}
-            disabled={running || refreshing}
+            disabled={running || refreshing || !turbine}
           >
             <RefreshCw size={15} />
-            Пересчитать прогноз
+            Обучить модель
           </button>
         </section>
 
         {page === "map" && (
           <Suspense fallback={<section className="panel state-panel" role="status">Загружаем 3D карту…</section>}>
-            <MapPage run={run} runs={workspace.runs} observations={workspace.observations}
+            <MapPage run={run} runs={workspace.runs} observations={workspace.observations} turbines={workspace.turbines}
               turbine={turbine} changeTurbine={changeTurbine} horizon={workspace.horizon}
               setHorizon={workspace.setHorizon} hour={workspace.hour} setHour={workspace.setHour} />
           </Suspense>
         )}
+        {page === "turbines" && <TurbinesPage turbines={workspace.turbines} turbine={turbine}
+          observations={workspace.observations} changeTurbine={changeTurbine} applyData={workspace.applyData} navigate={workspace.navigate} />}
+        {!run && page !== "map" && page !== "turbines" && <section className="panel state-panel">
+          <Wind size={32} /><h2>Для этого ветряка пока нет прогноза</h2><p>Добавьте фактические измерения и дождитесь обучения модели.</p>
+          <button className="button primary" onClick={() => workspace.navigate("turbines")}>Открыть измерения</button>
+        </section>}
         {page === "forecast" && (
           <ForecastPage
             run={workspace.run}
