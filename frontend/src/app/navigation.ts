@@ -1,11 +1,12 @@
-import { Activity, CloudSun, FileClock } from "lucide-react";
+import { Activity, CloudSun, FileClock, Map } from "lucide-react";
 import type { ForecastRun, Horizon, TurbineId } from "../domain/forecast";
 
-export type Page = "forecast" | "weather" | "history";
+export type Page = "forecast" | "weather" | "history" | "map";
 
 export const navigation = [
   { id: "forecast", label: "Прогноз", icon: Activity },
   { id: "weather", label: "Погода", icon: CloudSun },
+  { id: "map", label: "3D карта", icon: Map },
   { id: "history", label: "История расчётов", icon: FileClock },
 ] as const;
 

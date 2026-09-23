@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Info, LoaderCircle, RefreshCw, TriangleAlert, Wind, X } from "lucide-react";
 import { navigation } from "./navigation";
 import { useForecastWorkspace } from "./useForecastWorkspace";
@@ -9,6 +9,8 @@ import UpdateDialog from "../components/UpdateDialog";
 import ForecastPage from "../pages/ForecastPage";
 import WeatherPage from "../pages/WeatherPage";
 import HistoryPage from "../pages/HistoryPage";
+
+const MapPage = lazy(() => import("../pages/MapPage"));
 
 export default function App() {
   const [data, setData] = useState<WorkspaceData | null>(null);
@@ -109,6 +111,7 @@ function Workspace({ initialData }: { initialData: WorkspaceData }) {
               ? "Прогноз мощности"
               : page === "weather"
                 ? "Погодные данные"
+                : page === "map" ? "Ветропарк на карте"
                 : "История расчётов"}
           </h1>
         </section>
@@ -172,6 +175,13 @@ function Workspace({ initialData }: { initialData: WorkspaceData }) {
           </button>
         </section>
 
+        {page === "map" && (
+          <Suspense fallback={<section className="panel state-panel" role="status">Загружаем 3D карту…</section>}>
+            <MapPage run={run} runs={workspace.runs} observations={workspace.observations}
+              turbine={turbine} changeTurbine={changeTurbine} horizon={workspace.horizon}
+              setHorizon={workspace.setHorizon} hour={workspace.hour} setHour={workspace.setHour} />
+          </Suspense>
+        )}
         {page === "forecast" && (
           <ForecastPage
             run={workspace.run}

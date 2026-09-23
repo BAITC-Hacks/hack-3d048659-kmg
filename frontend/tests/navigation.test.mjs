@@ -8,7 +8,7 @@ test("direct links restore page, turbine, selected release and horizon", () => {
   const run = initialRuns.find(
     (item) => item.turbine === "t2",
   );
-  for (const page of ["forecast", "weather", "history"]) {
+  for (const page of ["forecast", "weather", "history", "map"]) {
     assert.deepEqual(
       readLocation(initialRuns, {
         pathname: `/${page}`,
