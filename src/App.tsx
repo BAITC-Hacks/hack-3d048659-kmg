@@ -4,7 +4,6 @@ import {
   Activity,
   ArrowRight,
   ArrowUpRight,
-  CalendarDays,
   Check,
   CheckCheck,
   ChevronDown,
@@ -17,7 +16,6 @@ import {
   Info,
   Layers3,
   LoaderCircle,
-  Play,
   RefreshCw,
   Sparkles,
   Thermometer,
@@ -39,6 +37,7 @@ import {
   YAxis,
 } from "recharts";
 import {
+  createDemoObservations,
   createDemoRun,
   formatDate,
   formatTime,
@@ -48,8 +47,10 @@ import type {
   ForecastPoint,
   ForecastRun,
   Horizon,
+  ObservationBatch,
   TurbineId,
 } from "./data/demo";
+import ActualComparison from "./components/ActualComparison";
 
 type Page = "forecast" | "weather" | "history";
 type WeatherState = "ready" | "loading" | "empty" | "stale";
@@ -108,6 +109,36 @@ function loadRuns(): ForecastRun[] {
   return initialRuns;
 }
 
+function loadObservations(): ObservationBatch[] {
+  try {
+    const saved: unknown = JSON.parse(
+      sessionStorage.getItem("wind-demo-observations-v1") || "null",
+    );
+    if (
+      Array.isArray(saved) &&
+      saved.every(
+        (batch) =>
+          batch &&
+          ["t1", "t2"].includes(batch.turbine) &&
+          Number.isFinite(Date.parse(batch.updatedAt)) &&
+          Array.isArray(batch.points) &&
+          batch.points.every(
+            (point: { time: string; power: number }) =>
+              Number.isFinite(Date.parse(point.time)) &&
+              point.time < batch.updatedAt &&
+              Number.isFinite(point.power) &&
+              point.power >= 0 &&
+              point.power <= 1,
+          ),
+      )
+    )
+      return saved;
+  } catch {
+    /* Optional tab-local measurements. */
+  }
+  return [];
+}
+
 function readLocation(runs: ForecastRun[]) {
   const params = new URLSearchParams(location.search);
   const turbine: TurbineId = params.get("turbine") === "t2" ? "t2" : "t1";
@@ -129,6 +160,7 @@ function readLocation(runs: ForecastRun[]) {
 
 function App() {
   const [runs, setRuns] = useState(loadRuns);
+  const [observations, setObservations] = useState(loadObservations);
   const initial = useRef(readLocation(runs)).current;
   const [page, setPage] = useState<Page>(initial.page);
   const [turbine, setTurbine] = useState<TurbineId>(initial.turbine);
@@ -142,7 +174,9 @@ function App() {
   );
   const [activeStep, setActiveStep] = useState(-1);
   const [notice, setNotice] = useState("");
-  const [tableOpen, setTableOpen] = useState(false);
+  const [noticeWarning, setNoticeWarning] = useState(false);
+  const [includeActuals, setIncludeActuals] = useState(true);
+  const [comparisonOpen, setComparisonOpen] = useState(false);
   const [historyFilter, setHistoryFilter] = useState("all");
   const dialogRef = useRef<HTMLDialogElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -156,7 +190,6 @@ function App() {
   const points = run.points.slice(0, horizon);
   const selected = points[Math.min(hour, points.length - 1)];
   const peak = points.reduce((a, b) => (a.power > b.power ? a : b));
-  const windAvg = points.reduce((sum, p) => sum + p.wind, 0) / points.length;
   const previous = releases.filter((r) => r.issuedAt < run.issuedAt).at(-1);
   const comparison = points
     .map((p) => ({
@@ -178,6 +211,15 @@ function App() {
     )
     .sort((a, b) => b.issuedAt.localeCompare(a.issuedAt));
   const running = activeStep >= 0;
+  const latestRun = runs
+    .filter((r) => r.turbine === turbine)
+    .sort((a, b) => b.issuedAt.localeCompare(a.issuedAt))[0];
+  const nextIssue = new Date(
+    Date.parse(latestRun.issuedAt) + 6 * 60 * 60 * 1000,
+  ).toISOString();
+  const turbineObservations = observations.find(
+    (batch) => batch.turbine === turbine,
+  );
 
   function url(nextPage = page, nextRun = runId) {
     return `/${nextPage}?${new URLSearchParams({ turbine, run: nextRun, horizon: String(horizon) })}`;
@@ -197,6 +239,16 @@ function App() {
     window.addEventListener("popstate", handlePop);
     return () => window.removeEventListener("popstate", handlePop);
   }, [runs]);
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(
+        "wind-demo-observations-v1",
+        JSON.stringify(observations),
+      );
+    } catch {
+      /* Optional tab-local measurements. */
+    }
+  }, [observations]);
   useEffect(() => {
     try {
       sessionStorage.setItem("wind-demo-runs-v1", JSON.stringify(runs));
@@ -261,24 +313,47 @@ function App() {
     const created = createDemoRun(baseRun.turbine, baseRun, horizon, status);
     setRuns((current) => [...current, created]);
     setTurbine(baseRun.turbine);
-    setRunId(created.id);
     setActiveStep(-1);
     setDemoOpen(false);
+    setNoticeWarning(status === "error");
     setNotice(
       status === "success"
-        ? "Новый демонстрационный прогноз готов и сохранён в истории."
-        : "Демонстрация сбоя завершена. Запись сохранена; новый прогноз не создан.",
+        ? `Демообновление завершено: выпуск ${stamp(created.issuedAt)} UTC сохранён в истории.${includeActuals ? " Новые измерения доступны в сравнении с фактом." : ""}`
+        : "Демонстрация сбоя: погода недоступна. Обновление не выполнено; предыдущий прогноз сохранён. Ошибка записана в историю.",
     );
-    setWeatherState("ready");
-    if (status === "success") navigate("forecast", created.id);
-    else navigate("history", created.id);
+    if (status === "success") {
+      if (includeActuals) {
+        const batch = createDemoObservations(baseRun.turbine, created.issuedAt);
+        setObservations((current) => {
+          const old = current.find((item) => item.turbine === batch.turbine);
+          const merged = new Map(
+            old?.points.map((point) => [point.time, point]),
+          );
+          batch.points.forEach((point) => merged.set(point.time, point));
+          return [
+            ...current.filter((item) => item.turbine !== batch.turbine),
+            {
+              ...batch,
+              points: [...merged.values()].sort((a, b) =>
+                a.time.localeCompare(b.time),
+              ),
+            },
+          ];
+        });
+      }
+      setWeatherState("ready");
+      navigate("forecast", created.id);
+    } else {
+      if (run.status === "error" && releases.length)
+        setRunId(releases.at(-1)!.id);
+      if (page === "history") setHistoryFilter("all");
+    }
+    replayButtonRef.current?.focus();
   }
 
   function startDemo() {
     setNotice("");
-    const baseRun = runs
-      .filter((r) => r.turbine === turbine)
-      .sort((a, b) => b.issuedAt.localeCompare(a.issuedAt))[0];
+    const baseRun = latestRun;
     setActiveStep(0);
     let step = 0;
     const tick = () => {
@@ -297,6 +372,11 @@ function App() {
     if (running) return;
     setDemoOpen(false);
     replayButtonRef.current?.focus();
+  }
+
+  function openUpdate() {
+    setDemoScenario("success");
+    setDemoOpen(true);
   }
 
   const chartClick = (index: unknown) => {
@@ -349,87 +429,24 @@ function App() {
       </header>
 
       <main id="main" className="main-shell">
-        <div className="workspace-bar">
-          <div className="breadcrumb">
-            <span>Рабочее пространство</span>
-            <ChevronRight size={14} />
-            <strong>{navigation.find((n) => n.id === page)?.label}</strong>
-          </div>
-          <div className="workspace-controls">
-            <span className="timezone">
-              <Clock3 size={14} />
-              UTC
-            </span>
-            <label className="turbine-select">
-              <Wind size={16} />
-              <span className="sr-only">Турбина</span>
-              <select
-                value={turbine}
-                onChange={(e) => changeTurbine(e.target.value as TurbineId)}
-                disabled={running}
-              >
-                <option value="t1">Турбина 1</option>
-                <option value="t2">Турбина 2</option>
-              </select>
-              <ChevronDown size={14} />
-            </label>
-          </div>
-        </div>
-
-        {page === "forecast" ? (
-          <section className="hero">
-            <img src="/wind-hero.png" alt="" className="hero-image" />
-            <div className="hero-shade" />
-            <div className="hero-content">
-              <span className="eyebrow">
-                <span className="tiny-line" />
-                ЭНЕРГИЯ НА ШАГ ВПЕРЁД
-              </span>
-              <h1>Паспорт прогноза</h1>
-              <p>
-                От прогноза ветра — к мощности ВЭС.
-                <br />
-                Каждый час, с понятным ходом расчёта.
-              </p>
-              <div className="hero-tags">
-                <span>
-                  <Wind size={15} />
-                  {turbineName(turbine)}
-                </span>
-                <span>
-                  <Clock3 size={14} />
-                  Горизонт {hoursLabel(horizon)}
-                </span>
-              </div>
-            </div>
-            <span className="hero-caption">Иллюстрация · не фото площадки</span>
-          </section>
-        ) : (
-          <section className="page-heading">
-            <div>
-              <span className="eyebrow">ПАСПОРТ ПРОГНОЗА</span>
-              <h1>
-                {page === "weather" ? "Погодные данные" : "История расчётов"}
-              </h1>
-              <p>
-                {page === "weather"
-                  ? "Погода, на которой основан выбранный выпуск прогноза."
-                  : "Каждый запуск, его исходные данные и результат — в одном месте."}
-              </p>
-            </div>
-            <span className="heading-icon">
-              {page === "weather" ? (
-                <CloudSun size={38} strokeWidth={1.3} />
-              ) : (
-                <FileClock size={38} strokeWidth={1.3} />
-              )}
-            </span>
-          </section>
-        )}
+        <section
+          className={`page-header ${page === "forecast" ? "forecast-heading" : ""}`}
+        >
+          {page === "forecast" && (
+            <img className="page-header-art" src="/wind-hero.png" alt="" />
+          )}
+          <h1>
+            {page === "forecast"
+              ? "Прогноз мощности"
+              : page === "weather"
+                ? "Погодные данные"
+                : "История расчётов"}
+          </h1>
+        </section>
 
         {notice && (
           <div
-            className={`notice ${run.status === "error" ? "warning" : ""}`}
+            className={`notice ${noticeWarning ? "warning" : ""}`}
             role="status"
           >
             <Info size={18} />
@@ -444,33 +461,21 @@ function App() {
           </div>
         )}
 
-        {page !== "history" && (
-          <section className="release-bar" aria-label="Выбор выпуска">
-            <div className="release-label">
-              <CalendarDays size={18} />
-              <div>
-                <strong>Выпуск прогноза</strong>
-                <span>Дата и время расчёта · UTC</span>
-              </div>
-            </div>
-            <div className="release-list">
-              {releases.map((r) => (
-                <button
-                  key={r.id}
-                  className={`release-tab ${r.id === run.id ? "selected" : ""}`}
-                  aria-pressed={r.id === run.id}
-                  onClick={() => setRunId(r.id)}
-                >
-                  <span>{formatDate(r.issuedAt)}</span>
-                  <small>
-                    {formatTime(r.issuedAt)}
-                    {r.id === run.id && <Check size={12} />}
-                  </small>
-                </button>
-              ))}
-            </div>
-            <label className="release-mobile">
-              <span className="sr-only">Выпуск прогноза</span>
+        <section className="view-controls" aria-label="Параметры прогноза">
+          <label className="control-field">
+            <span>Турбина</span>
+            <select
+              value={turbine}
+              onChange={(e) => changeTurbine(e.target.value as TurbineId)}
+              disabled={running}
+            >
+              <option value="t1">Турбина 1</option>
+              <option value="t2">Турбина 2</option>
+            </select>
+          </label>
+          {page !== "history" && (
+            <label className="control-field">
+              <span>Выпуск прогноза · UTC</span>
               <select value={run.id} onChange={(e) => setRunId(e.target.value)}>
                 {run.status === "error" && (
                   <option value={run.id}>{stamp(run.issuedAt)} · ошибка</option>
@@ -482,8 +487,17 @@ function App() {
                 ))}
               </select>
             </label>
-          </section>
-        )}
+          )}
+          <button
+            ref={replayButtonRef}
+            className="button primary page-action"
+            onClick={openUpdate}
+            disabled={running}
+          >
+            <RefreshCw size={15} />
+            Обновить данные
+          </button>
+        </section>
 
         {page === "forecast" &&
           (run.status === "error" ? (
@@ -493,12 +507,11 @@ function App() {
             />
           ) : (
             <>
-              <div className="forecast-grid">
+              <div className="primary-forecast">
                 <section className="panel forecast-panel">
                   <div className="panel-heading">
                     <div>
-                      <div className="overline">ПОЧАСОВОЙ ПРОГНОЗ</div>
-                      <h2>Мощность на горизонте</h2>
+                      <h2>Почасовая мощность</h2>
                     </div>
                     <HorizonControl value={horizon} onChange={setHorizon} />
                   </div>
@@ -508,8 +521,8 @@ function App() {
                       Нормализованная мощность
                     </span>
                     <span className="period-label">
-                      {formatDate(points[0].time)} —{" "}
-                      {formatDate(points.at(-1)!.time)} · UTC
+                      Период: {stamp(points[0].time)} —{" "}
+                      {stamp(points.at(-1)!.time)} UTC
                     </span>
                   </div>
                   <div
@@ -640,235 +653,29 @@ function App() {
                       unit="°C"
                     />
                   </div>
-                </section>
-
-                <aside className="insight-panel">
-                  <div className="insight-heading">
-                    <span className="sparkle-icon">
-                      <Sparkles size={19} />
-                    </span>
-                    <span>Картина прогноза</span>
-                    <span className="small-demo">ДЕМО</span>
-                  </div>
-                  <h2>
-                    {points.at(-1)!.wind > points[0].wind
-                      ? "К концу периода ветер усилится"
-                      : "К концу периода ветер ослабеет"}
-                  </h2>
-                  <p>
-                    Максимум ожидается {formatDate(peak.time)} в{" "}
-                    {formatTime(peak.time)} UTC. Средняя скорость ветра за{" "}
-                    {hoursLabel(horizon)} — {number(windAvg, 1)} м/с.
+                  <p className="forecast-summary">
+                    Максимум прогноза —{" "}
+                    <strong>{number(peak.power)} усл. ед.</strong>,{" "}
+                    {stamp(peak.time)} UTC.
                   </p>
-                  <div className="peak-stat">
-                    <span>Пиковая норм. мощность</span>
-                    <div>
-                      {number(peak.power)}
-                      <small>усл. ед.</small>
-                      <ArrowUpRight size={24} />
-                    </div>
-                  </div>
-                  <div className="insight-rule" />
-                  <div className="check-row">
-                    <span>
-                      <CheckCheck size={18} />
-                    </span>
-                    <div>
-                      <strong>Временная граница соблюдена</strong>
-                      <p>Погодный выпуск доступен до момента расчёта.</p>
-                    </div>
-                  </div>
-                  <a
-                    className="text-link"
-                    href={url("weather")}
-                    onClick={(e) => navClick(e, "weather")}
-                  >
-                    Посмотреть погодные данные
-                    <ArrowRight size={16} />
-                  </a>
-                </aside>
-              </div>
-
-              <section className="panel agent-panel">
-                <div className="panel-heading">
-                  <div>
-                    <div className="section-eyebrow">
-                      <span className="icon-label">
-                        <Layers3 size={17} />
-                        ПРОЗРАЧНЫЙ ПРОЦЕСС
-                      </span>
-                    </div>
-                    <h2>Как получен прогноз</h2>
-                  </div>
-                  <span className="status success">
-                    <Check size={13} />4 этапа завершены · демо
-                  </span>
-                </div>
-                <AgentSteps run={run} activeStep={-1} />
-                <div className="agent-bottom">
-                  <span>
-                    <Info size={14} />
-                    Показан пример работы агента. Модель пока не подключена.
-                  </span>
-                  <button
-                    className="text-link"
-                    onClick={() => {
-                      setDemoOpen(true);
-                      setDemoScenario("success");
-                    }}
-                  >
-                    <Play size={14} />
-                    Показать пересчёт
-                  </button>
-                </div>
-              </section>
-
-              <div className="bottom-grid">
-                <section className="panel change-panel">
-                  <div className="panel-heading">
-                    <div>
-                      <div className="overline">ОБНОВЛЕНИЕ ПРОГНОЗА</div>
-                      <h2>Что изменилось</h2>
-                    </div>
-                    <span className="soft-icon">
-                      <RefreshCw size={19} />
-                    </span>
-                  </div>
-                  {previous && comparison.length ? (
-                    <>
-                      <p className="muted">
-                        Сравнение с выпуском {stamp(previous.issuedAt)} UTC.
-                        <br />
-                        Только совпадающие целевые часы: {comparison.length}.
-                      </p>
-                      <div className="change-summary">
-                        <span className="delta-value">
-                          {delta! > 0 ? "+" : ""}
-                          {number(delta!, 3)}
-                        </span>
-                        <span>
-                          среднее изменение
-                          <br />
-                          норм. мощности, усл. ед.
-                        </span>
-                      </div>
-                      <div className="comparison-chart">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart
-                            data={comparison}
-                            margin={{ top: 5, right: 20, left: 0, bottom: 0 }}
-                          >
-                            <XAxis
-                              dataKey="time"
-                              tickFormatter={timeTick}
-                              minTickGap={50}
-                              tickLine={false}
-                              axisLine={false}
-                              tick={{ fill: "#65748b", fontSize: 12 }}
-                            />
-                            <Tooltip content={<DataTooltip />} />
-                            <Line
-                              type="monotone"
-                              dataKey="previous"
-                              name="Предыдущий выпуск"
-                              stroke="#aab3c6"
-                              strokeDasharray="5 5"
-                              dot={false}
-                              strokeWidth={2}
-                              isAnimationActive={false}
-                            />
-                            <Line
-                              type="monotone"
-                              dataKey="power"
-                              name="Выбранный выпуск"
-                              stroke="#365ef6"
-                              dot={false}
-                              strokeWidth={2.5}
-                              isAnimationActive={false}
-                            />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
-                      <div className="comparison-legend">
-                        <span>
-                          <span className="line-key blue" />
-                          Выбранный выпуск
-                        </span>
-                        <span>
-                          <span className="line-key dashed" />
-                          Предыдущий
-                        </span>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="empty-inline">
-                      <Layers3 size={28} />
-                      <p>
-                        {previous
-                          ? "У этих выпусков нет совпадающих целевых часов."
-                          : "Это первый выпуск. Сравнение появится после обновления."}
-                      </p>
-                    </div>
-                  )}
-                </section>
-                <section className="panel provenance-panel">
-                  <div className="overline">ИСХОДНЫЕ ДАННЫЕ</div>
-                  <h2>У каждого прогноза есть источник</h2>
-                  <p className="muted">
-                    В расчёт входят только данные, доступные на момент его
-                    выпуска.
-                  </p>
-                  <dl>
-                    <div>
-                      <dt>Погодные данные</dt>
-                      <dd>Локальный демонабор</dd>
-                    </div>
-                    <div>
-                      <dt>Выпуск погоды</dt>
-                      <dd>{stamp(run.weatherIssuedAt)} UTC</dd>
-                    </div>
-                    <div>
-                      <dt>Данные доступны</dt>
-                      <dd>{stamp(run.weatherAvailableAt)} UTC</dd>
-                    </div>
-                    <div>
-                      <dt>Расчёт выполнен</dt>
-                      <dd>{stamp(run.issuedAt)} UTC</dd>
-                    </div>
-                  </dl>
-                  <a
-                    className="text-link"
-                    href={url("history")}
-                    onClick={(e) => navClick(e, "history")}
-                  >
-                    Открыть историю расчётов
-                    <ArrowRight size={16} />
-                  </a>
                 </section>
               </div>
 
-              <section className="panel hourly-panel">
-                <button
-                  className="table-toggle"
-                  onClick={() => setTableOpen(!tableOpen)}
-                  aria-expanded={tableOpen}
-                >
-                  <div>
-                    <span className="overline">ЗНАЧЕНИЯ ПО ЧАСАМ</span>
-                    <h2>
-                      Детализация прогноза{" "}
-                      <span className="count-badge">{points.length}</span>
-                    </h2>
-                  </div>
-                  <span>
-                    {tableOpen ? "Свернуть" : "Открыть таблицу"}
-                    <ChevronDown
-                      className={tableOpen ? "rotate" : ""}
-                      size={18}
-                    />
-                  </span>
-                </button>
-                {tableOpen && (
+              <div className="secondary-sections">
+                <ActualComparison
+                  runs={runs}
+                  selectedRun={run}
+                  observations={turbineObservations}
+                  onUpdate={openUpdate}
+                />
+                <details className="panel disclosure">
+                  <summary>
+                    <span>Почасовые значения</span>
+                    <span className="disclosure-meta">
+                      {hoursLabel(horizon)}
+                    </span>
+                    <ChevronDown size={17} />
+                  </summary>
                   <div className="table-scroll">
                     <table>
                       <caption className="sr-only">
@@ -907,39 +714,131 @@ function App() {
                       </tbody>
                     </table>
                   </div>
-                )}
-              </section>
+                </details>
+                <details
+                  className="panel disclosure"
+                  open={comparisonOpen}
+                  onToggle={(event) =>
+                    setComparisonOpen(event.currentTarget.open)
+                  }
+                >
+                  <summary>
+                    <span>Сравнить с предыдущим выпуском</span>
+                    <ChevronDown size={17} />
+                  </summary>
+                  {comparisonOpen && (
+                    <div className="disclosure-body change-panel">
+                      {previous && comparison.length ? (
+                        <>
+                          <p className="muted">
+                            Сравнение с выпуском {stamp(previous.issuedAt)} UTC.
+                            <br />
+                            Только совпадающие целевые часы: {comparison.length}
+                            .
+                          </p>
+                          <div className="change-summary">
+                            <span className="delta-value">
+                              {delta! > 0 ? "+" : ""}
+                              {number(delta!, 3)}
+                            </span>
+                            <span>
+                              среднее изменение
+                              <br />
+                              норм. мощности, усл. ед.
+                            </span>
+                          </div>
+                          <div className="comparison-chart">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <LineChart
+                                data={comparison}
+                                margin={{
+                                  top: 5,
+                                  right: 20,
+                                  left: 0,
+                                  bottom: 0,
+                                }}
+                              >
+                                <XAxis
+                                  dataKey="time"
+                                  tickFormatter={timeTick}
+                                  minTickGap={50}
+                                  tickLine={false}
+                                  axisLine={false}
+                                  tick={{ fill: "#65748b", fontSize: 12 }}
+                                />
+                                <Tooltip content={<DataTooltip />} />
+                                <Line
+                                  type="monotone"
+                                  dataKey="previous"
+                                  name="Предыдущий выпуск"
+                                  stroke="#aab3c6"
+                                  strokeDasharray="5 5"
+                                  dot={false}
+                                  strokeWidth={2}
+                                  isAnimationActive={false}
+                                />
+                                <Line
+                                  type="monotone"
+                                  dataKey="power"
+                                  name="Выбранный выпуск"
+                                  stroke="#365ef6"
+                                  dot={false}
+                                  strokeWidth={2.5}
+                                  isAnimationActive={false}
+                                />
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </div>
+                          <div className="comparison-legend">
+                            <span>
+                              <span className="line-key blue" />
+                              Выбранный выпуск
+                            </span>
+                            <span>
+                              <span className="line-key dashed" />
+                              Предыдущий
+                            </span>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="empty-inline">
+                          <Layers3 size={28} />
+                          <p>
+                            {previous
+                              ? "У этих выпусков нет совпадающих целевых часов."
+                              : "Это первый выпуск. Сравнение появится после обновления."}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </details>
+                <details className="panel disclosure">
+                  <summary>
+                    <span>Как получен прогноз</span>
+                    <ChevronDown size={17} />
+                  </summary>
+                  <div className="disclosure-body">
+                    <AgentSteps run={run} activeStep={-1} />
+                    <div className="agent-bottom">
+                      <span>Демонстрация: модель пока не подключена.</span>
+                      <a
+                        className="text-link"
+                        href={url("weather")}
+                        onClick={(e) => navClick(e, "weather")}
+                      >
+                        Источник погодных данных
+                        <ArrowRight size={16} />
+                      </a>
+                    </div>
+                  </div>
+                </details>
+              </div>
             </>
           ))}
 
         {page === "weather" && (
           <>
-            <section className="weather-intro">
-              <div>
-                <span className="status source-status">
-                  <Database size={14} />
-                  Локальный демонабор
-                </span>
-                <p>
-                  Прогноз погоды для расчёта от{" "}
-                  <strong>{stamp(run.issuedAt)} UTC</strong>
-                </p>
-              </div>
-              <label className="scenario-control">
-                Состояние данных
-                <select
-                  value={weatherState}
-                  onChange={(e) =>
-                    setWeatherState(e.target.value as WeatherState)
-                  }
-                >
-                  <option value="ready">Доступны</option>
-                  <option value="loading">Загрузка · демо</option>
-                  <option value="empty">Нет данных · демо</option>
-                  <option value="stale">Устарели · демо</option>
-                </select>
-              </label>
-            </section>
             {run.status === "error" ? (
               <ErrorPanel
                 onPrevious={() => previous && setRunId(previous.id)}
@@ -961,10 +860,7 @@ function App() {
                   Это демонстрационный сценарий. Расчёт без входных данных
                   недоступен.
                 </p>
-                <button
-                  className="button primary"
-                  onClick={() => setWeatherState("loading")}
-                >
+                <button className="button primary" onClick={openUpdate}>
                   <RefreshCw size={16} />
                   Повторить загрузку
                 </button>
@@ -979,10 +875,7 @@ function App() {
                       Показаны ранее использованные данные. Для нового расчёта
                       нужен свежий выпуск.
                     </span>
-                    <button
-                      className="button small"
-                      onClick={() => setWeatherState("loading")}
-                    >
+                    <button className="button small" onClick={openUpdate}>
                       Обновить
                     </button>
                   </div>
@@ -1045,112 +938,60 @@ function App() {
                 </section>
               </>
             )}
-            <section className="panel weather-source">
-              <div className="source-heading">
-                <span className="soft-icon teal">
-                  <Database size={22} />
-                </span>
-                <div>
-                  <h2>Происхождение данных</h2>
-                  <p>
-                    Пример архивного погодного выпуска, без обращения к внешнему
-                    сервису.
+            <div className="secondary-sections">
+              <details className="panel disclosure">
+                <summary>
+                  <span>Источник и время погодных данных</span>
+                  <ChevronDown size={17} />
+                </summary>
+                <div className="disclosure-body">
+                  <dl className="source-grid">
+                    <div>
+                      <dt>Источник</dt>
+                      <dd>Локальный демонабор</dd>
+                    </div>
+                    <div>
+                      <dt>Выпуск погоды · UTC</dt>
+                      <dd>{stamp(run.weatherIssuedAt)}</dd>
+                    </div>
+                    <div>
+                      <dt>Данные доступны · UTC</dt>
+                      <dd>{stamp(run.weatherAvailableAt)}</dd>
+                    </div>
+                  </dl>
+                  <p className="source-note">
+                    Погодные данные доступны до расчёта от {stamp(run.issuedAt)}{" "}
+                    UTC. Значения искусственные.
                   </p>
                 </div>
-              </div>
-              <div className="source-grid">
-                <div>
-                  <span>Источник</span>
-                  <strong>Демонстрационные данные</strong>
-                  <small>Искусственный набор для интерфейса</small>
-                </div>
-                <div>
-                  <span>Выпуск прогноза погоды</span>
-                  <strong>{stamp(run.weatherIssuedAt)}</strong>
-                  <small>UTC · дата создания прогноза</small>
-                </div>
-                <div>
-                  <span>Доступен для расчёта</span>
-                  <strong>{stamp(run.weatherAvailableAt)}</strong>
-                  <small>UTC · раньше выбранного запуска</small>
-                </div>
-              </div>
-              <div className="source-note">
-                <Info size={16} />
-                <span>
-                  Это прогноз погоды на целевые часы. Фактические наблюдения за
-                  будущий период здесь не используются.
-                </span>
-              </div>
-            </section>
+              </details>
+              <details className="demo-settings">
+                <summary>
+                  Демосценарии
+                  <ChevronDown size={15} />
+                </summary>
+                <label className="scenario-control">
+                  Состояние данных
+                  <select
+                    value={weatherState}
+                    onChange={(e) =>
+                      setWeatherState(e.target.value as WeatherState)
+                    }
+                  >
+                    <option value="ready">Доступны</option>
+                    <option value="loading">Загрузка · демо</option>
+                    <option value="empty">Нет данных · демо</option>
+                    <option value="stale">Устарели · демо</option>
+                  </select>
+                </label>
+              </details>
+            </div>
           </>
         )}
 
         {page === "history" && (
           <>
-            <section className="history-summary">
-              <div>
-                <span className="soft-icon">
-                  <Layers3 size={22} />
-                </span>
-                <div>
-                  <strong>
-                    {runs.filter((r) => r.turbine === turbine).length}
-                  </strong>
-                  <span>запусков в истории</span>
-                </div>
-              </div>
-              <div>
-                <span className="soft-icon teal">
-                  <CheckCheck size={22} />
-                </span>
-                <div>
-                  <strong>
-                    {
-                      runs.filter(
-                        (r) => r.turbine === turbine && r.status === "success",
-                      ).length
-                    }
-                  </strong>
-                  <span>готовых прогнозов</span>
-                </div>
-              </div>
-              <div>
-                <span className="soft-icon amber">
-                  <TriangleAlert size={22} />
-                </span>
-                <div>
-                  <strong>
-                    {
-                      runs.filter(
-                        (r) => r.turbine === turbine && r.status === "error",
-                      ).length
-                    }
-                  </strong>
-                  <span>сбоев получения погоды</span>
-                </div>
-              </div>
-            </section>
             <section className="panel history-panel">
-              <div className="panel-heading">
-                <div>
-                  <div className="overline">
-                    {turbineName(turbine).toUpperCase()} · UTC
-                  </div>
-                  <h2>Все запуски</h2>
-                </div>
-                <button
-                  ref={replayButtonRef}
-                  className="button primary"
-                  onClick={() => {
-                    setDemoOpen(true);
-                    setDemoScenario("success");
-                  }}
-                >
-                  <Play size={15} />
-                  Показать пересчёт
-                </button>
-              </div>
               <div className="history-filters">
                 <div className="segmented" aria-label="Фильтр запусков">
                   {[
@@ -1198,7 +1039,6 @@ function App() {
                           </span>
                           <span className="run-time">
                             {formatTime(r.issuedAt)}
-                            <span className="small-demo">ДЕМО</span>
                           </span>
                         </th>
                         <td>{r.reason}</td>
@@ -1221,7 +1061,10 @@ function App() {
                           <button
                             className="icon-button open-run"
                             aria-label={`Открыть расчёт ${stamp(r.issuedAt)}`}
-                            onClick={() => navigate("forecast", r.id)}
+                            onClick={() => {
+                              setHorizon(r.horizon);
+                              navigate("forecast", r.id);
+                            }}
                           >
                             <ArrowUpRight size={19} />
                           </button>
@@ -1242,34 +1085,8 @@ function App() {
                 вкладке браузера.
               </div>
             </section>
-            <div className="history-explainer">
-              <span className="soft-icon">
-                <FileClock size={22} />
-              </span>
-              <div>
-                <h3>История сохраняет контекст</h3>
-                <p>
-                  Обновление погоды создаёт новый выпуск. Предыдущий прогноз
-                  остаётся доступен — вместе со временем расчёта и входными
-                  данными.
-                </p>
-              </div>
-            </div>
           </>
         )}
-
-        <footer className="footer">
-          <a
-            className="footer-brand"
-            href={url("forecast")}
-            onClick={(e) => navClick(e, "forecast")}
-          >
-            <Wind size={18} />
-            ветропрогноз.
-          </a>
-          <span>Демонстрационный прототип · без подключения модели</span>
-          <span>Всё время указано в UTC</span>
-        </footer>
       </main>
 
       <dialog
@@ -1299,41 +1116,74 @@ function App() {
           </button>
         </div>
         <span className="eyebrow">ДЕМОНСТРАЦИОННЫЙ СЦЕНАРИЙ</span>
-        <h2 id="demo-dialog-title">Посмотрим, как работает агент</h2>
+        <h2 id="demo-dialog-title">Обновить данные и прогноз</h2>
         <p className="muted" id="demo-dialog-description">
-          Воспроизведём цикл на локальных данных. Новый запуск появится в
-          истории{" "}
-          {turbineName(turbine).toLowerCase().replace("турбина", "турбины")}.
+          Получим следующий выпуск погоды и пересчитаем прогноз. Предыдущие
+          версии останутся в истории.
         </p>
-        <fieldset disabled={running} className="scenario-options">
-          <legend>Результат запуска</legend>
-          <label>
-            <input
-              type="radio"
-              name="scenario"
-              checked={demoScenario === "success"}
-              onChange={() => setDemoScenario("success")}
-            />
-            <CheckCheck size={19} />
-            <span>
-              <strong>Успешный пересчёт</strong>
-              <small>Все четыре этапа и новый прогноз</small>
-            </span>
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="scenario"
-              checked={demoScenario === "error"}
-              onChange={() => setDemoScenario("error")}
-            />
-            <TriangleAlert size={19} />
-            <span>
-              <strong>Погода недоступна</strong>
-              <small>Остановка на первом этапе</small>
-            </span>
-          </label>
-        </fieldset>
+        <div className="update-context">
+          <strong>
+            {turbineName(turbine)} · {hoursLabel(horizon)}
+          </strong>
+          <span>Новый расчёт: {stamp(nextIssue)} UTC</span>
+          <small>
+            Демовремя продвинется на 6 часов. Все данные искусственные.
+          </small>
+        </div>
+        <label className="update-actuals">
+          <input
+            type="checkbox"
+            checked={includeActuals}
+            disabled={running}
+            onChange={(event) => setIncludeActuals(event.target.checked)}
+          />
+          <span>
+            <strong>Загрузить фактическую выработку</strong>
+            <small>
+              Демоизмерения прошедших часов для проверки прошлых прогнозов.
+            </small>
+          </span>
+        </label>
+        <details className="update-scenarios">
+          <summary>
+            Сценарий демонстрации <ChevronDown size={15} />
+          </summary>
+          <fieldset disabled={running} className="scenario-options">
+            <legend>Результат запуска</legend>
+            <label>
+              <input
+                type="radio"
+                name="scenario"
+                checked={demoScenario === "success"}
+                onChange={() => setDemoScenario("success")}
+              />
+              <CheckCheck size={19} />
+              <span>
+                <strong>Успешный пересчёт</strong>
+                <small>Все четыре этапа и новый прогноз</small>
+              </span>
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="scenario"
+                checked={demoScenario === "error"}
+                onChange={() => setDemoScenario("error")}
+              />
+              <TriangleAlert size={19} />
+              <span>
+                <strong>Погода недоступна</strong>
+                <small>Остановка на первом этапе</small>
+              </span>
+            </label>
+          </fieldset>
+        </details>
+        {demoScenario === "error" && (
+          <p className="update-error-hint">
+            <TriangleAlert size={16} /> Выбран сбой погоды. Данные и прогноз не
+            обновятся.
+          </p>
+        )}
         {running && (
           <div className="demo-progress" role="status">
             <LoaderCircle className="spin" size={20} />
@@ -1349,9 +1199,9 @@ function App() {
           {running ? (
             <LoaderCircle className="spin" size={17} />
           ) : (
-            <Play size={16} />
+            <RefreshCw size={16} />
           )}
-          {running ? "Выполняется демонстрация" : "Запустить демонстрацию"}
+          {running ? "Обновляем данные…" : "Обновить · демо"}
         </button>
       </dialog>
     </>

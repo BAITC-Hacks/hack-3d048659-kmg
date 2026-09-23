@@ -1,0 +1,152 @@
+.actual-comparison,
+.actual-comparison-body {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.actual-demo-note {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.actual-cutoff {
+  margin-top: 5px;
+  font-size: 0.75rem;
+}
+
+.actual-run-control {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 350px;
+  min-width: 0;
+  margin: 20px 0 15px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.actual-run-control select {
+  width: 100%;
+  min-width: 0;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--navy);
+  font-size: 0.8125rem;
+}
+
+.actual-chart-description {
+  font-size: 0.75rem;
+}
+
+.actual-comparison-chart {
+  width: 100%;
+  min-width: 0;
+  height: 225px;
+  margin-top: 12px;
+}
+
+.actual-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px 20px;
+  margin: 10px 0 20px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.actual-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.actual-legend i {
+  width: 18px;
+  height: 3px;
+  border-radius: 4px;
+}
+
+.actual-legend-forecast {
+  background: var(--blue);
+}
+
+.actual-legend-observed {
+  background: var(--teal);
+}
+
+.actual-hourly {
+  max-width: 100%;
+  min-width: 0;
+  border-top: 1px solid var(--line);
+}
+
+.actual-hourly > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 0;
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+}
+
+.actual-hourly > summary::-webkit-details-marker {
+  display: none;
+}
+
+.actual-hourly[open] > summary > svg {
+  transform: rotate(180deg);
+}
+
+.actual-hourly table {
+  min-width: 530px;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.actual-hourly th,
+.actual-hourly td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.actual-hourly th:first-child {
+  padding-left: 0;
+  text-align: left;
+}
+
+.actual-hourly tbody th {
+  font-weight: 500;
+}
+
+.actual-hourly thead th {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.actual-empty {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+@media (max-width: 450px) {
+  .actual-comparison-chart {
+    height: 200px;
+  }
+
+  .actual-run-control {
+    max-width: none;
+  }
+}

@@ -10,6 +10,17 @@ export interface ForecastPoint {
   temperature: number;
 }
 
+export interface ActualPoint {
+  time: string;
+  power: number;
+}
+
+export interface ObservationBatch {
+  turbine: TurbineId;
+  updatedAt: string;
+  points: ActualPoint[];
+}
+
 export interface ForecastRun {
   id: string;
   turbine: TurbineId;
@@ -30,6 +41,62 @@ const round = (value: number, digits = 2): number =>
 
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, value));
+
+export function createDemoObservations(
+  turbine: TurbineId,
+  availableAt: string,
+): ObservationBatch {
+  const availableTimestamp = Date.parse(availableAt);
+  if (!Number.isFinite(availableTimestamp)) {
+    throw new RangeError(
+      "Некорректное время обновления демонстрационных данных",
+    );
+  }
+  // Искусственный «факт»: час считается доступным лишь через час после его начала.
+  const lastTimestamp = Math.floor(availableTimestamp / HOUR) * HOUR - HOUR;
+  const turbineOffset = turbine === "t2" ? 0.45 : 0;
+
+  return {
+    turbine,
+    updatedAt: new Date(availableTimestamp).toISOString(),
+    points: Array.from({ length: 96 }, (_, index) => {
+      const timestamp = lastTimestamp - (95 - index) * HOUR;
+      const targetHour = (timestamp - DEMO_EPOCH) / HOUR;
+      // Значение зависит только от турбины и целевого часа, а не от выпуска прогноза.
+      // Это синтетическая кривая для показа обновления факта, не реальные измерения ВЭС.
+      const wind = clamp(
+        8.2 +
+          Math.sin(targetHour / 8.5) * 2.2 +
+          Math.cos(targetHour / 3.8) * 0.95 +
+          Math.sin(targetHour / 31) * 0.8 +
+          turbineOffset +
+          Math.sin(targetHour * 0.77 + turbineOffset) * 0.35 +
+          Math.cos(targetHour / 5.4 + turbineOffset) * 0.22,
+        2.2,
+        15.4,
+      );
+      const temperature =
+        -8.5 +
+        Math.sin(((targetHour - 8) * Math.PI) / 12) * 3.4 +
+        Math.cos(targetHour / 36) * 1.8 -
+        turbineOffset;
+      const windFraction = clamp((wind - 3) / 9, 0, 1);
+      const temperatureFactor = 1 + (-temperature - 5) * 0.002;
+      const turbineFactor = turbine === "t1" ? 0.98 : 0.95;
+      const power = clamp(
+        Math.pow(windFraction, 1.7) * temperatureFactor * turbineFactor +
+          Math.sin(targetHour * 1.31 + turbineOffset) * 0.018,
+        0,
+        1,
+      );
+
+      return {
+        time: new Date(timestamp).toISOString(),
+        power: round(power, 3),
+      };
+    }),
+  };
+}
 
 function buildPoints(turbine: TurbineId, issuedAt: string): ForecastPoint[] {
   const issuedTimestamp = Date.parse(issuedAt);
@@ -150,7 +217,7 @@ export function createDemoRun(
   status: ForecastRun["status"],
 ): ForecastRun {
   const issuedAt = new Date(
-    Date.parse(previousRun.issuedAt) + 3 * HOUR,
+    Date.parse(previousRun.issuedAt) + 6 * HOUR,
   ).toISOString();
   demoRunSequence += 1;
 
@@ -160,7 +227,7 @@ export function createDemoRun(
     horizon,
     status,
     status === "success"
-      ? "Демонстрационный пересчёт после обновления входных данных"
+      ? "Обновление прогноза по новому выпуску погоды"
       : "Демонстрация сбоя: источник погоды временно недоступен",
     `-demo-${Date.now()}-${demoRunSequence}`,
   );
