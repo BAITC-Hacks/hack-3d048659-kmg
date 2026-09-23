@@ -26,7 +26,8 @@ cd hack-3d048659-kmg
 docker compose up --build -d --wait
 ```
 
-Откройте http://127.0.0.1:8088. Поднимаются два контейнера: `backend`
+Откройте http://127.0.0.1:8088. Страницы: прогноз, погода, история запусков агента,
+3D-карта турбин. Поднимаются два контейнера: `backend`
 (Python API прогноза) и `frontend` (React + nginx, проксирует `/api` в backend).
 Остановка: `docker compose down`. Подробнее и запуск на сервере — [DEPLOYMENT.md](DEPLOYMENT.md).
 
@@ -143,11 +144,15 @@ npm run build
 
 - Python: pandas, numpy, scikit-learn, joblib, threadpoolctl, requests, pyarrow, PyYAML, pytest
   (версии — `backend/requirements.txt`).
-- Frontend: React, Vite, TypeScript, Recharts, lucide-react, шрифт Manrope (@fontsource);
+- Frontend: React, Vite, TypeScript, Recharts, lucide-react, MapLibre GL JS, three.js,
+  шрифт Manrope (@fontsource);
   полный список с версиями — `frontend/package.json`.
 - Инфраструктура: Docker, nginx, Node.js, Python.
 - Погода: [Open-Meteo Historical Forecast API](https://open-meteo.com/en/docs/historical-forecast-api)
   (обучающий ряд) и [Open-Meteo Single Runs API](https://open-meteo.com/en/docs/single-runs-api)
   (архивные выпуски для прогноза), модель ECMWF IFS (`ecmwf_ifs`).
+- Картографическая подложка 3D-карты турбин: © [OpenStreetMap](https://www.openstreetmap.org/copyright)
+  contributors (тайлы tile.openstreetmap.org). Для подложки карты нужен интернет;
+  прогноз, API и остальные страницы работают офлайн.
 - Измерения турбин: данные организаторов, `backend/data/raw/`.
 - При разработке использовались AI-ассистенты для генерации и ревью кода.
