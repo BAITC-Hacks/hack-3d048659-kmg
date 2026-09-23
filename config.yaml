@@ -3,10 +3,10 @@ internal_timezone: UTC
 timezone: Asia/Almaty
 utc_offset: "+05:00"
 turbines:
-  - id: 1
+  - turbine_id: 1
     lat: 43.645150
     lon: 78.535604
-  - id: 2
+  - turbine_id: 2
     lat: 43.643198
     lon: 78.538828
 # Shared point for both turbines; fetch once per weather run/request window.
@@ -30,9 +30,16 @@ features:
       - wind_direction_sin
       - wind_direction_cos
 weather_model: ecmwf_ifs
+weather_variables:
+  - wind_speed_100m
+  - wind_direction_100m
+  - wind_speed_10m
+  - wind_gusts_10m
+  - temperature_2m
+  - surface_pressure
 availability_delay_hours: 6
 forecast_origin_local: "00:00"
-horizon: 48
+horizon_hours: 48
 backtest:
   origin_start_local: "2026-01-31"
   origin_end_local: "2026-02-28"
