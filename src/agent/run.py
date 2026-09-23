@@ -13,7 +13,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--origin', default='2026-01-30T19:00Z')
     parser.add_argument('--no-llm', action='store_true', help='Deterministic default; no external LLM requests')
-    parser.add_argument('--backtest', action='store_true')
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--backtest', action='store_true')
+    mode.add_argument('--simulate-missing-run', action='store_true', help='Use fallback chain and save only to forecasts_fallback_demo.csv')
     args = parser.parse_args()
     config = read_config()
     if args.backtest:
@@ -24,9 +26,11 @@ def main():
     observations, _ = load_all()
     client = WeatherClient(config)
     records = []
+    output_path = ROOT / 'outputs' / ('forecasts_fallback_demo.csv' if args.simulate_missing_run else 'forecasts.csv')
     for origin in origins:
         try:
-            result = reforecast(origin, observations=observations, client=client)
+            result = reforecast(origin, observations=observations, client=client,
+                                output_path=output_path, simulate_missing_run=args.simulate_missing_run)
         except Exception as error:
             log_step(origin, 'run', 'failed', str(error))
             raise
@@ -47,7 +51,7 @@ def main():
                     'target_definition': 'Mean over [target_time_utc, target_time_utc+1h)',
                     'actuals_available_for_february': False}
         (ROOT / 'outputs/forecast_metadata.json').write_text(json.dumps(metadata, indent=2), encoding='utf-8')
-    print(f'Completed {len(origins)} origins; forecasts upserted into outputs/forecasts.csv')
+    print(f'Completed {len(origins)} origins; forecasts upserted into {output_path.name}')
 
 
 if __name__ == '__main__':

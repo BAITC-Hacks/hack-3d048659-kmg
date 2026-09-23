@@ -57,6 +57,10 @@ python -m pytest -p no:cacheprovider
   Файл включает отдельные цели в январе и марте на краях 48-часовых горизонтов.
 - `outputs/hgb_model.joblib`: production `hgb-v2-train-before-20260201`,
   48 767 размеченных часов до 2026-02-01 00:00 UTC+05:00.
+- `outputs/hgb_asof_model.joblib`: `hgb-v2-asof-20260131`, тот же рецепт, обучен только
+  на часах, доступных на первый origin 2026-01-30T19:00Z (местная полночь 31.01).
+  Production-модель видит наблюдения 31.01 и для этого origin запрещена guard-проверкой;
+  агент выбирает самую свежую модель, чьи данные доступны на origin.
 - `outputs/hgb_validation_model.joblib`: сохранённая модель до 2025-12-01.
   Только она используется для origin 2026-01-31 00:00 local: production-model
   ещё содержит недоступные на этот момент наблюдения.
@@ -129,10 +133,10 @@ turbine_id,forecast_origin_utc,weather_run_utc,target_time_utc,horizon_h,predict
 
 | Турбина | Метод | MAE | RMSE |
 |---|---|---:|---:|
-| 1 | model | 0.1644 | 0.2214 |
+| 1 | model | 0.1493 | 0.2235 |
 | 1 | power_curve | 0.1573 | 0.2313 |
 | 1 | persistence | 0.3398 | 0.4623 |
-| 2 | model | 0.1677 | 0.2271 |
+| 2 | model | 0.1525 | 0.2292 |
 | 2 | power_curve | 0.1602 | 0.2355 |
 | 2 | persistence | 0.3366 | 0.4594 |
 
@@ -140,25 +144,64 @@ turbine_id,forecast_origin_utc,weather_run_utc,target_time_utc,horizon_h,predict
 
 | Горизонт, ч | Метод | MAE | RMSE |
 |---|---|---:|---:|
-| 1-24 | model | 0.1556 | 0.2072 |
+| 1-24 | model | 0.1387 | 0.2077 |
 | 1-24 | power_curve | 0.1492 | 0.2199 |
 | 1-24 | persistence | 0.3215 | 0.4562 |
-| 25-48 | model | 0.1765 | 0.2401 |
+| 25-48 | model | 0.1632 | 0.2437 |
 | 25-48 | power_curve | 0.1683 | 0.2461 |
 | 25-48 | persistence | 0.3549 | 0.4655 |
 
-Кривая мощности лучше HGB по MAE, HGB лучше по RMSE; оба лучше persistence.
-Ранние `validation_metrics.csv` относятся к декабрю–январю со сшитым
-погодным рядом и не заменяют эту оценку по выпускам.
+Выбранный по декабрю HGB с `loss="absolute_error"` лучше кривой мощности
+по январским MAE и RMSE. По сравнению с прежним squared-error HGB январский
+MAE улучшился, а RMSE немного ухудшился. Январь использован только для оценки.
+Ранние `validation_metrics.csv` относятся к прежнему squared-error HGB
+и сшитому погодному ряду; они не заменяют оценку по выпускам.
+
+## Быстрый эксперимент: выбор только по декабрю
+
+`python -m src.model.experiment` обучает кандидат на данных до 2025-12-01
+и сравнивает только декабрьские цели/начала прогнозов на 2918 одинаковых строках.
+Январские строки удаляются до формирования выборки. Параметры остальных
+частей HGB одинаковы; смесь фиксирована 0.5/0.5 между прежним HGB и кривой.
+Источник признаков — Historical Forecast, как в hgb_validation_model.
+Критерий выбора — общий декабрьский MAE, без выбора по январским результатам.
+
+| Вариант | Декабрь MAE | Декабрь RMSE |
+|---|---:|---:|
+| hgb_current | 0.15676 | 0.22005 |
+| hgb_absolute_error | 0.14887 | 0.23357 |
+| blend_50_50 | 0.16582 | 0.22936 |
+| power_curve | 0.19215 | 0.27266 |
+
+Выбран `hgb_absolute_error`. Решение и границы выборок сохранены в
+`outputs/december_experiment.json`; `fit_bundle` применяет эту фиксированную
+рецептуру к production-модели и отдельной январской модели. Ранний
+`hgb_validation_model.joblib` сохраняется как исходная squared-error модель.
+Воспроизведение эксперимента: `python -m src.model.experiment`, затем
+`python -m src.model.train`, `python -m src.agent.run --backtest` и
+`python -m src.eval.backtest_jan`.
+
+## Демонстрация недоступного погодного выпуска
+
+```powershell
+python -m src.agent.run --origin 2026-01-31T19:00Z --simulate-missing-run
+```
+
+Выбранный выпуск 2026-01-31T12:00Z искусственно считается недоступным,
+поэтому используется реальный предыдущий выпуск 2026-01-31T06:00Z.
+Кеш не удаляется. Результат: `outputs/forecasts_fallback_demo.csv`, 96 строк,
+`fallback_used="true"`. Основной `outputs/forecasts.csv` не изменяется.
+Все шаги демонстрации записываются с `fallback=true` в `agent_runs.jsonl`.
+Этот origin допускает production-model без обхода проверки времени обучения.
 
 ## Third-party libraries and data sources
 
 - pandas, numpy: чтение, агрегация, признаки и расчёты.
 - scikit-learn: HistGradientBoostingRegressor и метрики.
 - requests: HTTP; pyarrow: Parquet; PyYAML: конфигурация.
-- streamlit, plotly: зависимости интерфейса команды.
-- openai: библиотека для опциональной LLM-интеграции, в текущем агенте не вызывается.
-- pytest: тесты; python-dotenv: поддержка локальной конфигурации окружения.
+- pytest: тесты.
+- Версии закреплены в `requirements.txt` (scikit-learn 1.9.1 обязателен для загрузки joblib-моделей).
+- UI (`app/web`, React/Vite): см. `app/web/README.md`.
 - joblib и threadpoolctl (зависимости scikit-learn): артефакты моделей и управление потоками.
 - Погода: [Open-Meteo Historical Forecast API](https://open-meteo.com/en/docs/historical-forecast-api)
   для обучающего ряда; [Open-Meteo Single Runs API](https://open-meteo.com/en/docs/single-runs-api)

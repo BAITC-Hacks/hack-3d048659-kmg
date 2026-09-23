@@ -56,7 +56,10 @@ def assert_bundle_available(bundle, origin):
 
 
 def load_bundle(origin):
-    for filename in ('hgb_model.joblib', 'hgb_validation_model.joblib'):
+    # Newest artifact whose training data was available at origin wins.
+    for filename in ('hgb_model.joblib', 'hgb_asof_model.joblib', 'hgb_validation_model.joblib'):
+        if not (ROOT / 'outputs' / filename).exists():
+            continue
         bundle = joblib.load(ROOT / 'outputs' / filename)
         try:
             assert_bundle_available(bundle, origin)
@@ -86,6 +89,9 @@ def predict(bundle, features, origin_utc):
     assert_bundle_available(bundle, origin_utc)
     with threadpool_limits(limits=4):
         result = np.clip(bundle['model'].predict(features), 0, 1)
+    weight = bundle['metadata'].get('recipe', {}).get('power_curve_weight', 0.0)
+    if weight:
+        result = (1 - weight) * result + weight * predict_curve(features, bundle['curves']).to_numpy()
     if not np.isfinite(result).all():
         raise ValueError('Non-finite model predictions')
     return result
@@ -151,11 +157,11 @@ def save_forecast(frame, path=ROOT / 'outputs/forecasts.csv'):
 
 def reforecast(origin_utc, bundle=None, observations=None, client=None, save=True,
                output_path=ROOT / 'outputs/forecasts.csv', log_path=ROOT / 'outputs/agent_runs.jsonl',
-               return_context=False):
+               return_context=False, simulate_missing_run=False):
     origin = utc(origin_utc)
     config = read_config()
     def log(step, status, message, run=None, fallback=False):
-        log_step(origin, step, status, message, run, fallback, log_path)
+        log_step(origin, step, status, message, run, fallback or simulate_missing_run, log_path)
     log('start', 'ok', 'Deterministic orchestration')
     bundle = bundle if bundle is not None else load_bundle(origin)
     assert_bundle_available(bundle, origin)
@@ -167,6 +173,8 @@ def reforecast(origin_utc, bundle=None, observations=None, client=None, save=Tru
     for attempt in range(2):
         run = selected_run - pd.Timedelta(hours=6 * attempt)
         try:
+            if simulate_missing_run and attempt == 0:
+                raise requests.HTTPError('Simulated selected-run unavailability; cache is unchanged')
             weather = fetch_weather(run, client)
             log('fetch_weather', 'ok', 'Single Runs archive/cache', run, attempt > 0)
             horizon = select_horizon(weather, run, origin, config)

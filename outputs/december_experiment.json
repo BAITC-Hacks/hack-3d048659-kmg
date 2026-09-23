@@ -1,0 +1,72 @@
+{
+  "selection_period": "December 2025 only",
+  "train_before_utc": "2025-11-30T19:00:00+00:00",
+  "validation_end_exclusive_utc": "2025-12-31T19:00:00+00:00",
+  "validation_n": 2918,
+  "train_n": 45784,
+  "pooled": {
+    "hgb_current": {
+      "mae": 0.15675610144030683,
+      "rmse": 0.2200491122121619
+    },
+    "hgb_absolute_error": {
+      "mae": 0.14886545034169701,
+      "rmse": 0.23357306233964226
+    },
+    "blend_50_50": {
+      "mae": 0.16582194055998334,
+      "rmse": 0.22935902405122954
+    },
+    "power_curve": {
+      "mae": 0.1921512051633539,
+      "rmse": 0.27265732220383
+    }
+  },
+  "per_turbine": {
+    "1": {
+      "hgb_current": {
+        "mae": 0.15574460118020045,
+        "rmse": 0.21804883721957904
+      },
+      "hgb_absolute_error": {
+        "mae": 0.14809277342218347,
+        "rmse": 0.2319456160022731
+      },
+      "blend_50_50": {
+        "mae": 0.16441654281689483,
+        "rmse": 0.227744218081583
+      },
+      "power_curve": {
+        "mae": 0.18996372549019608,
+        "rmse": 0.2699252319970718
+      }
+    },
+    "2": {
+      "hgb_current": {
+        "mae": 0.15777176997071582,
+        "rmse": 0.2220394995304973
+      },
+      "hgb_absolute_error": {
+        "mae": 0.1496413113693954,
+        "rmse": 0.2351958845819014
+      },
+      "blend_50_50": {
+        "mae": 0.16723312977728785,
+        "rmse": 0.2309691250252366
+      },
+      "power_curve": {
+        "mae": 0.19434769917582415,
+        "rmse": 0.27537339842714864
+      }
+    }
+  },
+  "selection_metric": "pooled December MAE on identical origin/target rows",
+  "weather_source": "historical_forecast (hgb_validation_model setup)",
+  "selected": "hgb_absolute_error",
+  "beats_power_curve": true,
+  "recipe": {
+    "loss": "absolute_error",
+    "power_curve_weight": 0.0
+  },
+  "january_used_for_selection": false
+}
