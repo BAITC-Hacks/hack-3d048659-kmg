@@ -1,0 +1,84 @@
+{
+  "per_turbine": {
+    "1": {
+      "model": {
+        "mae": 0.16443031953610168,
+        "rmse": 0.22144457806963547
+      },
+      "power_curve": {
+        "mae": 0.15725504980310398,
+        "rmse": 0.2312944872483566
+      },
+      "persistence": {
+        "mae": 0.3398320593004401,
+        "rmse": 0.4623345010631281
+      }
+    },
+    "2": {
+      "model": {
+        "mae": 0.16768165802559742,
+        "rmse": 0.22707112429398804
+      },
+      "power_curve": {
+        "mae": 0.16023122538800091,
+        "rmse": 0.2354746475431047
+      },
+      "persistence": {
+        "mae": 0.33659833217512164,
+        "rmse": 0.4594335143623863
+      }
+    }
+  },
+  "by_horizon": {
+    "1-24": {
+      "model": {
+        "mae": 0.15563152725579993,
+        "rmse": 0.20722606189842147
+      },
+      "power_curve": {
+        "mae": 0.14922179398148147,
+        "rmse": 0.21993163359425996
+      },
+      "persistence": {
+        "mae": 0.3215300925925926,
+        "rmse": 0.4562139804824643
+      }
+    },
+    "25-48": {
+      "model": {
+        "mae": 0.17649494886156689,
+        "rmse": 0.24013868489608312
+      },
+      "power_curve": {
+        "mae": 0.1682777236903106,
+        "rmse": 0.24613820084096708
+      },
+      "persistence": {
+        "mae": 0.35492350486787205,
+        "rmse": 0.46551810774505986
+      }
+    }
+  },
+  "n": 2878,
+  "period": {
+    "train_before_local": "2026-01-01T00:00:00+05:00",
+    "origin_start_local": "2026-01-01",
+    "origin_end_local": "2026-01-30",
+    "actuals_end_exclusive_utc": "2026-01-31T19:00:00Z",
+    "units": "normalized power [0,1]",
+    "n_per_turbine": {
+      "1": 1439,
+      "2": 1439
+    },
+    "n_by_horizon": {
+      "1-24": 1440,
+      "25-48": 1438
+    },
+    "excluded_missing_actual_or_baseline": 2,
+    "forecast_rows": 2880,
+    "fallback_rows": 0,
+    "training_weather_source": "historical_forecast",
+    "evaluation_weather_source": "single_runs"
+  },
+  "weather_source": "single_runs"
+}
