@@ -19,6 +19,18 @@ class OutputContractTest(unittest.TestCase):
         expected = pd.date_range('2026-01-31', '2026-02-28', tz=LOCAL_TZ).tz_convert('UTC').strftime('%Y-%m-%dT%H:%M:%SZ')
         self.assertEqual(set(frame.forecast_origin_utc), set(expected))
 
+    def test_saved_fallback_demo(self):
+        import pandas as pd
+        from src.agent.tools import validate_forecast, select_weather_run
+        path = Path(__file__).resolve().parents[1] / 'outputs' / 'forecasts_fallback_demo.csv'
+        frame = pd.read_csv(path, dtype={'fallback_used': str})
+        self.assertEqual(len(frame), 96)
+        self.assertTrue(validate_forecast(frame))
+        self.assertTrue(frame.fallback_used.eq('true').all())
+        origin = pd.Timestamp(frame.forecast_origin_utc.iloc[0])
+        expected_run = select_weather_run(origin) - pd.Timedelta(hours=6)
+        self.assertTrue(pd.to_datetime(frame.weather_run_utc, utc=True).eq(expected_run).all())
+
     def test_mock_contract(self):
         path = Path(__file__).resolve().parents[1] / "outputs" / "forecasts_mock.csv"
         with path.open(newline="", encoding="utf-8") as stream:

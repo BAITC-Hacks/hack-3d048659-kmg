@@ -76,6 +76,8 @@ def main():
                    'fallback_rows': int(all_forecasts.fallback_used.eq('true').sum()),
                    'training_weather_source': 'historical_forecast',
                    'evaluation_weather_source': 'single_runs'},
+        'model_recipe': bundle['metadata'].get('recipe', {}),
+        'selection_period': 'December 2025 only; January is evaluation only',
         'weather_source': 'single_runs',
     }
     (output / 'metrics.json').write_text(json.dumps(metrics, indent=2, allow_nan=False), encoding='utf-8')

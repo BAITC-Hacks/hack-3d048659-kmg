@@ -17,6 +17,22 @@ from src.weather.client import WeatherClient
 TRAIN_END = pd.Timestamp('2025-12-01', tz=LOCAL_TZ).tz_convert('UTC')
 MODEL_VERSION = 'hgb-v1-train-before-20251201'
 PRODUCTION_VERSION = 'hgb-v2-train-before-20260201'
+# First backtest origin (2026-01-31 00:00 local) must not see Jan 31 observations.
+ASOF_CUTOFF = pd.Timestamp('2026-01-31', tz=LOCAL_TZ).tz_convert('UTC')
+ASOF_VERSION = 'hgb-v2-asof-20260131'
+
+
+def selected_recipe():
+    path = ROOT / 'outputs/december_experiment.json'
+    if not path.exists():
+        return {'loss': 'squared_error', 'power_curve_weight': 0.0}
+    report = json.loads(path.read_text(encoding='utf-8'))
+    if report['january_used_for_selection'] or pd.Timestamp(report['validation_end_exclusive_utc']) > pd.Timestamp('2025-12-31T19:00Z'):
+        raise ValueError('Recipe selection must use December only')
+    recipe = report['recipe']
+    if recipe['loss'] not in ('squared_error', 'absolute_error') or recipe['power_curve_weight'] not in (0.0, 0.5):
+        raise ValueError('Unexpected experiment recipe')
+    return recipe
 
 
 def training_rows(frame, cutoff=TRAIN_END):
@@ -40,7 +56,8 @@ def fit_bundle(frame, cutoff, model_version):
     train = frame.loc[(frame.time < cutoff) & (frame.available_at_utc <= cutoff)].dropna(subset=['power'])
     if train.empty:
         raise ValueError('No labeled observations available before cutoff')
-    model = HistGradientBoostingRegressor(max_iter=200, learning_rate=0.06,
+    recipe = selected_recipe()
+    model = HistGradientBoostingRegressor(loss=recipe['loss'], max_iter=200, learning_rate=0.06,
                                          max_leaf_nodes=20, l2_regularization=1.0,
                                          early_stopping=False, random_state=42,
                                          categorical_features=['turbine_id'])
@@ -56,6 +73,7 @@ def fit_bundle(frame, cutoff, model_version):
         'sklearn_version': sklearn.__version__,
         'weather_source': 'Open-Meteo Historical Forecast stitched archive, ecmwf_ifs',
         'missing_label_policy': 'Exclude unlabeled hours; keep labeled rows with missing weather.',
+        'recipe': recipe, 'recipe_selection_period': 'December 2025 only',
     }
     return {'model': model, 'curves': fit_power_curves(train), 'metadata': metadata}
 
@@ -133,9 +151,26 @@ def train_and_evaluate(frame):
     return model, curves, pd.DataFrame(metrics), validation, metadata
 
 
+def fit_asof(frame, output):
+    """Same recipe as production, trained only on rows available at the first origin."""
+    asof = fit_bundle(frame, ASOF_CUTOFF, ASOF_VERSION)
+    joblib.dump(asof, output / 'hgb_asof_model.joblib')
+    (output / 'asof_model_metadata.json').write_text(json.dumps(asof['metadata'], indent=2), encoding='utf-8')
+    print('As-of:', json.dumps(asof['metadata'], indent=2))
+    return asof
+
+
 def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--asof-only', action='store_true',
+                        help='Only fit hgb_asof_model.joblib for origin 2026-01-30T19:00Z')
+    args = parser.parse_args()
     observations, _ = load_all()
     frame = join_weather(observations, WeatherClient().historical())
+    if args.asof_only:
+        fit_asof(frame, ROOT / 'outputs')
+        return
     model, curves, metrics, validation, metadata = train_and_evaluate(frame)
     output = ROOT / 'outputs'
     joblib.dump({'model': model, 'curves': curves, 'metadata': metadata}, output / 'hgb_validation_model.joblib')
@@ -146,6 +181,7 @@ def main():
     joblib.dump(production, output / 'hgb_model.joblib')
     export_power_curves(production['curves'], output / 'power_curve.csv')
     (output / 'model_metadata.json').write_text(json.dumps(production['metadata'], indent=2), encoding='utf-8')
+    fit_asof(frame, output)
     print('Production:', json.dumps(production['metadata'], indent=2))
     print(json.dumps(metadata, indent=2))
     print(metrics.to_string(index=False))

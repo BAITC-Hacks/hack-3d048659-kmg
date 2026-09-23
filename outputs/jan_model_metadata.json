@@ -22,5 +22,10 @@
   "power_unit": "normalized_0_1",
   "sklearn_version": "1.9.1",
   "weather_source": "Open-Meteo Historical Forecast stitched archive, ecmwf_ifs",
-  "missing_label_policy": "Exclude unlabeled hours; keep labeled rows with missing weather."
+  "missing_label_policy": "Exclude unlabeled hours; keep labeled rows with missing weather.",
+  "recipe": {
+    "loss": "absolute_error",
+    "power_curve_weight": 0.0
+  },
+  "recipe_selection_period": "December 2025 only"
 }

@@ -87,6 +87,31 @@ def test_missing_primary_uses_previous_cycle(bundle, tmp_path):
     assert all(set(log) == {'ts', 'origin_utc', 'step', 'status', 'message', 'weather_run', 'fallback'} for log in logs)
 
 
+def test_simulated_missing_run_skips_selected_cycle_and_marks_logs(bundle, tmp_path):
+    client = FakeWeather()
+    result = run_with(bundle, tmp_path, client, simulate_missing_run=True)
+    assert client.calls == [select_weather_run(ORIGIN) - pd.Timedelta(hours=6)]
+    assert result.fallback_used.eq('true').all()
+    logs = [json.loads(line) for line in (tmp_path / 'runs.jsonl').read_text().splitlines()]
+    assert all(log['fallback'] for log in logs)
+    assert any('Simulated' in log['message'] for log in logs)
+
+
+def test_simulation_cli_uses_separate_file(monkeypatch, tmp_path, bundle):
+    import sys
+    import src.agent.run as cli
+    called = {}
+    def fake_run(origin, **kwargs):
+        called.update(kwargs)
+        return run_with(bundle, tmp_path, FakeWeather(), simulate_missing_run=True)
+    monkeypatch.setattr(cli, 'reforecast', fake_run)
+    monkeypatch.setattr(cli, 'load_all', lambda: (pd.DataFrame(), []))
+    monkeypatch.setattr(sys, 'argv', ['run', '--origin', iso(ORIGIN), '--simulate-missing-run'])
+    cli.main()
+    assert called['output_path'].name == 'forecasts_fallback_demo.csv'
+    assert called['simulate_missing_run'] is True
+
+
 def test_partial_runs_use_newest_wind_power_curve(bundle, tmp_path):
     client = FakeWeather(partial=True)
     result = run_with(bundle, tmp_path, client)
@@ -159,7 +184,8 @@ def test_model_availability_guard_precedes_weather(bundle, tmp_path):
 def test_production_model_not_used_before_cutoff():
     early = load_bundle('2026-01-30T19:00Z')
     production = load_bundle(HISTORY_END)
-    assert early['metadata']['model_version'] == 'hgb-v1-train-before-20251201'
+    assert early['metadata']['model_version'] in ('hgb-v2-asof-20260131', 'hgb-v1-train-before-20251201')
+    assert pd.Timestamp(early['metadata']['train_last_available_at_utc']) <= pd.Timestamp('2026-01-30T19:00Z')
     assert production['metadata']['model_version'] == 'hgb-v2-train-before-20260201'
     assert pd.Timestamp(production['metadata']['train_last_available_at_utc']) <= HISTORY_END
 
