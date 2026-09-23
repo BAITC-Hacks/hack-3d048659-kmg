@@ -1,62 +1,89 @@
-# hack-3d048659-kmg
+# Ветропрогноз
 
-Frontend-прототип «Ветропрогноз» для хакатона KMG. В этой ветке находятся интерфейс, его демонстрационные данные, тесты и конфигурация запуска.
+React dashboard connected to a Python forecasting backend for two wind turbines.
+The forecast, weather, and history screens use the repository's saved model outputs,
+archived ECMWF IFS weather, and measured power. Power is normalized to `[0, 1]`;
+it is not MW or MWh. All displayed timestamps are UTC.
 
-## Ветропрогноз — локальный интерфейс
+## Available data
 
-Нужны Node.js 22.12+ (рекомендуется 24) и npm.
+- 29 forecast origins from `2026-01-30T19:00Z` through `2026-02-27T19:00Z`
+  (local midnights January 31 through February 28, UTC+05:00).
+- Each origin contains 48 hourly predictions for each turbine. Target hours extend
+  into early March at the end of the archive.
+- Observations exposed to the dashboard cover January 2026. Source measurements
+  stop on January 31 local time; February actuals and February evaluation metrics
+  are unavailable. Missing observations remain missing.
+- Recalculation runs the existing forecasting pipeline for a selected archived
+  origin and both turbines. The API does not forecast for today's date.
 
-```bash
+## Run locally
+
+Use Python 3.11 and Node.js 22.12 or newer (Node.js 24 is used by the container).
+Run the backend in one terminal from the repository root:
+
+```powershell
+cd backend
+py -3.11 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m src.api --host 127.0.0.1 --port 8000
+```
+
+On Linux/macOS, use `python3.11 -m venv .venv` and `.venv/bin/python` in place
+of the Windows commands. The exact versions in `backend/requirements.txt` are
+needed to load the saved models.
+
+In another terminal:
+
+```powershell
 cd frontend
 npm ci
 npm run dev
 ```
 
-Откройте http://127.0.0.1:5173/. Сервер должен оставаться запущенным, пока открыт предпросмотр. Если порт 5173 занят, команда сообщит об этом, а не переключится на другой адрес.
+Open [http://127.0.0.1:5173](http://127.0.0.1:5173). Vite forwards `/api` to
+the backend on port 8000. Both processes must run. An API failure appears in
+the dashboard with a retry action.
 
-Все npm-команды интерфейса запускаются из `frontend/`. Его зависимости и lockfile находятся в этой же папке.
+For the container setup, run `docker compose up --build -d --wait` from the
+repository root and open [http://127.0.0.1:8088](http://127.0.0.1:8088).
+See [deployment instructions](DEPLOYMENT.md) for configuration and verification.
 
-Страницы: `/forecast`, `/weather`, `/history`. Данные демонстрационные; модель, backend и внешние погодные API пока не подключены. Новые демонстрационные расчёты хранятся в текущей вкладке браузера.
+## Project structure
 
-На главном экране находятся выбор турбины и выпуска, график и значения выбранного часа. Почасовая таблица, сравнение выпусков и ход расчёта раскрываются по нажатию. На странице погоды источник и демонстрационные сценарии также свёрнуты; в истории сразу показан список запусков.
+| Directory | Contents |
+| --- | --- |
+| [`frontend/`](frontend/README.md) | React application, API adapter, UI tests, and nginx configuration |
+| [`backend/`](backend/README.md) | HTTP API, forecast pipeline, tests, configuration, archived inputs, and models |
+| `backend/.runtime/` | Local API recalculations, run logs, and any additional weather cache; ignored by Git |
 
-### Обновление данных
+The API reads committed results from `backend/outputs/`. API recalculations
+persist separate runtime overrides without changing those reference results.
+Reproducing or training the original pipeline through its command-line tools
+is documented in [backend/README.md](backend/README.md).
 
-Кнопка «Обновить данные» доступна на всех трёх страницах. В окне обновления можно включить загрузку имитированной фактической выработки и выбрать демонстрацию недоступности погоды.
+## API
 
-- Успешное обновление продвигает демовремя на 6 часов относительно последнего запуска выбранной турбины, получает следующий искусственный погодный выпуск и создаёт новую версию прогноза. Старые выпуски сохраняются.
-- «Сравнить с фактической выработкой» сопоставляет прогноз и демоизмерения только на совпадающих прошедших часах. Измерения имитируются независимо от прогнозов, поступают с задержкой в один час и при повторной загрузке не меняются. Будущих измерений нет.
-- Если погода недоступна, данные не меняются, предыдущий прогноз остаётся доступен, а неуспешный запуск сохраняется в истории. Повторите обновление с успешным сценарием.
-- Расчёты и загруженные измерения сохраняются после перезагрузки страницы в текущей вкладке. Это локальная демонстрация без подключения к ВЭС, погодному сервису или переобучения модели. Реальные источники и расписание обновления подключаются на этапе backend.
+| Method and route | Behavior |
+| --- | --- |
+| `GET /api/health` | Returns `{ "status": "ok" }` |
+| `GET /api/workspace` | Returns `{ runs, observations, meta }` for the dashboard |
+| `POST /api/forecasts` | Accepts `{ "origin": "2026-01-30T19:00:00Z" }`, recalculates both turbines, and returns the updated workspace |
 
-Проверка временных ограничений и неизменности демоданных: `npm test`.
+POST requests use `Content-Type: application/json`. Origins must match an
+existing archived origin. Errors return `{ "error": { "code", "message" } }`
+with an appropriate HTTP status. Browser requests use the frontend's same-origin
+proxy; cross-origin writes are rejected.
 
-Проверка и сборка: `npm run build`. Просмотр готовой сборки: `npm run preview` (адрес будет указан в терминале).
+## Verification
 
-Исходники интерфейса, его конфигурация, зависимости, тесты и Docker-образ находятся в `frontend/`. Для воспроизводимого запуска сохраняйте `frontend/package-lock.json` вместе с исходниками. `frontend/node_modules` и `frontend/dist` создаются локально и исключены из Git. Структура модулей и правила дальнейшей разработки описаны в [frontend/README.md](frontend/README.md).
-
-## Запуск веб-интерфейса в Docker
-
-Из корня репозитория:
-
-```bash
-docker compose up --build -d --wait
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m pytest -p no:cacheprovider
+cd ../frontend
+npm test
+npm run build
 ```
 
-Откройте http://127.0.0.1:8088. Для доступа на сервере задайте `BIND_ADDRESS=0.0.0.0` перед запуском; примеры для Linux и PowerShell есть в [DEPLOYMENT.md](DEPLOYMENT.md). Остановить контейнер: `docker compose down`.
-
-Нужен запущенный Docker с Compose. Node.js на хосте для запуска контейнера не требуется: установка зависимостей и сборка выполняются внутри образа. `frontend/Dockerfile` описывает образ, корневой `docker-compose.yml` — его запуск.
-Контейнер содержит React-прототип с демонстрационными данными.
-Подробности, команды проверки и настройка порта: [DEPLOYMENT.md](DEPLOYMENT.md).
-
-## Структура проекта
-
-```text
-frontend/             React-приложение, зависимости, тесты и Dockerfile
-docker-compose.yml    Запуск frontend-контейнера
-README.md             Обзор и быстрый запуск
-DEPLOYMENT.md         Запуск контейнера локально и на сервере
-.gitignore            Исключения для локальных и сгенерированных файлов
-```
-
-В `frontend/src` разделены страницы, переиспользуемые компоненты, состояние приложения, типы данных и демонстрационные источники. Демонстрационные значения создаются локально; исторические наборы данных и модель для работы интерфейса не требуются. Подробности: [frontend/README.md](frontend/README.md).
+After starting the container stack, run `npm run docker:check` from `frontend/`
+to check the UI, API, forecast data, and static asset delivery.

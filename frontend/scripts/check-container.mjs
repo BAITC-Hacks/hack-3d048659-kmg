@@ -14,6 +14,24 @@ async function request(path, expectedStatus = 200) {
 try {
   const health = await request("/healthz");
   assert.equal((await health.text()).trim(), "ok", "health response");
+  const apiHealth = await request("/api/health");
+  assert.match(apiHealth.headers.get("content-type") || "", /application\/json/);
+  assert.equal((await apiHealth.json()).status, "ok", "backend health");
+  const workspaceResponse = await request("/api/workspace");
+  assert.match(workspaceResponse.headers.get("content-type") || "", /application\/json/);
+  const workspace = await workspaceResponse.json();
+  assert.ok(Array.isArray(workspace.runs) && workspace.runs.length > 0, "archived forecasts");
+  assert.deepEqual(
+    [...new Set(workspace.runs.map((run) => run.turbine))].sort(),
+    ["t1", "t2"],
+    "forecasts for both turbines",
+  );
+  for (const run of workspace.runs) {
+    assert.equal(run.points.length, 48, `${run.id}: complete forecast horizon`);
+    assert.ok(run.modelVersion, `${run.id}: model provenance`);
+  }
+  assert.ok(Array.isArray(workspace.observations), "backend observations");
+  assert.equal(workspace.meta.availabilityDelayHours, 6, "weather availability delay");
   const home = await request("/");
   const html = await home.text();
   assert.match(html, /<div id="root"><\/div>/, "React entry point");
@@ -55,11 +73,12 @@ try {
     "fresh HTML after redeploy",
   );
   await request("/assets/missing-deployment-check.js", 404);
-  await request("/api/missing-deployment-check", 404);
+  const missingApi = await request("/api/missing-deployment-check", 404);
+  assert.equal((await missingApi.json()).error.code, "not_found", "API error response");
   const hero = await request("/wind-hero.png");
   assert.match(hero.headers.get("content-type") || "", /image\/png/);
   console.log(
-    `Container checks passed at ${base}: health, routes, assets, caching, and missing paths.`,
+    `Container checks passed at ${base}: frontend and backend health, archived forecasts, routes, assets, caching, and missing paths.`,
   );
 } catch (error) {
   console.error(`Container check failed at ${base}: ${error.message}`);

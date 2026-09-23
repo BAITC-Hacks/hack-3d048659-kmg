@@ -25,7 +25,7 @@ export default function HourlyTable({
       <div className="table-scroll">
         <table>
           <caption className="sr-only">
-            Демонстрационный почасовой прогноз, время UTC
+            Почасовой прогноз модели, время UTC. Прочерк означает отсутствие погоды.
           </caption>
           <thead>
             <tr>

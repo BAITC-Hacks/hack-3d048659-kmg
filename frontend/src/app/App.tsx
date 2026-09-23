@@ -1,7 +1,9 @@
-import { Info, RefreshCw, Wind, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Info, LoaderCircle, RefreshCw, TriangleAlert, Wind, X } from "lucide-react";
 import { navigation } from "./navigation";
 import { useForecastWorkspace } from "./useForecastWorkspace";
-import type { TurbineId } from "../domain/forecast";
+import type { TurbineId, WorkspaceData } from "../domain/forecast";
+import { fetchWorkspace } from "../data/api";
 import { stamp } from "../lib/format";
 import UpdateDialog from "../components/UpdateDialog";
 import ForecastPage from "../pages/ForecastPage";
@@ -9,7 +11,33 @@ import WeatherPage from "../pages/WeatherPage";
 import HistoryPage from "../pages/HistoryPage";
 
 export default function App() {
-  const workspace = useForecastWorkspace();
+  const [data, setData] = useState<WorkspaceData | null>(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true); setError("");
+    fetchWorkspace(controller.signal).then((next) => {
+      if (!controller.signal.aborted) setData(next);
+    }).catch((reason: unknown) => {
+      if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "Не удалось загрузить прогнозы.");
+    }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [attempt]);
+  if (data?.runs.length) return <Workspace initialData={data} />;
+  return <main className="main-shell" id="main">
+    <section className="panel state-panel" role={error ? "alert" : "status"}>
+      {loading ? <LoaderCircle className="spin" size={32} /> : error ? <TriangleAlert size={32} /> : <Wind size={32} />}
+      <h1>{loading ? "Загружаем прогнозы" : error ? "Сервис прогноза недоступен" : "В архиве пока нет прогнозов"}</h1>
+      <p>{loading ? "Получаем сохранённые расчёты, погоду и измерения." : error || "Добавьте результаты расчёта в backend и обновите данные."}</p>
+      {!loading && <button className="button primary" onClick={() => setAttempt((value) => value + 1)}><RefreshCw size={16} />Повторить загрузку</button>}
+    </section>
+  </main>;
+}
+
+function Workspace({ initialData }: { initialData: WorkspaceData }) {
+  const workspace = useForecastWorkspace(initialData);
   const {
     url,
     navClick,
@@ -20,6 +48,7 @@ export default function App() {
     turbine,
     changeTurbine,
     running,
+    refreshing,
     run,
     setRunId,
     releases,
@@ -63,7 +92,7 @@ export default function App() {
           </nav>
           <span className="demo-badge">
             <span />
-            Демонстрационные данные
+            Архивные прогнозы · ECMWF IFS
           </span>
         </div>
       </header>
@@ -107,7 +136,7 @@ export default function App() {
             <select
               value={turbine}
               onChange={(e) => changeTurbine(e.target.value as TurbineId)}
-              disabled={running}
+              disabled={running || refreshing}
             >
               <option value="t1">Турбина 1</option>
               <option value="t2">Турбина 2</option>
@@ -116,7 +145,7 @@ export default function App() {
           {page !== "history" && (
             <label className="control-field">
               <span>Выпуск прогноза · UTC</span>
-              <select value={run.id} onChange={(e) => setRunId(e.target.value)}>
+              <select value={run.id} disabled={running || refreshing} onChange={(e) => setRunId(e.target.value)}>
                 {run.status === "error" && (
                   <option value={run.id}>{stamp(run.issuedAt)} · ошибка</option>
                 )}
@@ -128,14 +157,18 @@ export default function App() {
               </select>
             </label>
           )}
+          <button className="button" onClick={workspace.refreshData} disabled={running || refreshing}>
+            <RefreshCw size={15} className={refreshing ? "spin" : undefined} />
+            {refreshing ? "Загружаем…" : "Обновить данные"}
+          </button>
           <button
             ref={replayButtonRef}
             className="button primary page-action"
             onClick={openUpdate}
-            disabled={running}
+            disabled={running || refreshing}
           >
             <RefreshCw size={15} />
-            Обновить данные
+            Пересчитать прогноз
           </button>
         </section>
 
@@ -154,7 +187,8 @@ export default function App() {
             peak={workspace.peak}
             runs={workspace.runs}
             turbineObservations={workspace.turbineObservations}
-            openUpdate={workspace.openUpdate}
+            refreshData={workspace.refreshData}
+            refreshing={workspace.refreshing || workspace.running}
             comparisonOpen={workspace.comparisonOpen}
             setComparisonOpen={workspace.setComparisonOpen}
             comparison={workspace.comparison}
@@ -168,8 +202,6 @@ export default function App() {
             run={workspace.run}
             previous={workspace.previous}
             setRunId={workspace.setRunId}
-            weatherState={workspace.weatherState}
-            setWeatherState={workspace.setWeatherState}
             openUpdate={workspace.openUpdate}
             points={workspace.points}
             horizon={workspace.horizon}
@@ -193,18 +225,12 @@ export default function App() {
       </main>
       <UpdateDialog
         dialogRef={workspace.dialogRef}
-        closeDemo={workspace.closeDemo}
+        closeUpdate={workspace.closeUpdate}
         running={workspace.running}
-        setDemoOpen={workspace.setDemoOpen}
-        turbine={workspace.turbine}
-        horizon={workspace.horizon}
-        nextIssue={workspace.nextIssue}
-        includeActuals={workspace.includeActuals}
-        setIncludeActuals={workspace.setIncludeActuals}
-        demoScenario={workspace.demoScenario}
-        setDemoScenario={workspace.setDemoScenario}
-        activeStep={workspace.activeStep}
-        startDemo={workspace.startDemo}
+        setUpdateOpen={workspace.setUpdateOpen}
+        run={workspace.updateRun ?? workspace.run}
+        requestError={workspace.requestError}
+        startRecalculation={workspace.startRecalculation}
       />
     </>
   );

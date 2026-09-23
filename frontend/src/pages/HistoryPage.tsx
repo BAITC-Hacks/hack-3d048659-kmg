@@ -45,12 +45,12 @@ export default function HistoryPage({
         <div className="table-scroll">
           <table className="history-table">
             <caption className="sr-only">
-              История демонстрационных запусков выбранной турбины
+              Сохранённые на сервере прогнозы выбранной турбины
             </caption>
             <thead>
               <tr>
                 <th>Дата расчёта · UTC</th>
-                <th>Причина запуска</th>
+                <th>Метод и модель</th>
                 <th>Горизонт</th>
                 <th>Статус</th>
                 <th>
@@ -70,20 +70,23 @@ export default function HistoryPage({
                     </span>
                     <span className="run-time">{formatTime(r.issuedAt)}</span>
                   </th>
-                  <td>{r.reason}</td>
+                  <td>
+                    {r.reason}
+                    <span className="run-time">{r.modelVersion}</span>
+                  </td>
                   <td className="nowrap">{hoursLabel(r.horizon)}</td>
                   <td>
                     <span
-                      className={`status ${r.status === "success" ? "success" : "error"}`}
+                      className={`status ${r.status === "success" && !r.fallbackUsed ? "success" : "error"}`}
                     >
-                      {r.status === "success" ? (
+                      {r.status === "success" && !r.fallbackUsed ? (
                         <Check size={13} />
                       ) : (
                         <TriangleAlert size={13} />
                       )}
                       {r.status === "success"
-                        ? "Прогноз готов"
-                        : "Ошибка погоды"}
+                        ? r.fallbackUsed ? "Резервный расчёт" : "Прогноз готов"
+                        : "Ошибка расчёта"}
                     </span>
                   </td>
                   <td>
@@ -110,8 +113,8 @@ export default function HistoryPage({
         </div>
         <div className="history-footnote">
           <Info size={15} />
-          Новые демонстрационные запуски сохраняются только в текущей вкладке
-          браузера.
+          Показаны сохранённые на сервере прогнозы. Ошибки обновления отображаются
+          в уведомлении и не создают прогноз.
         </div>
       </section>
     </>

@@ -1,6 +1,7 @@
 import type { Horizon, TurbineId } from "../domain/forecast";
 
-export function formatDate(iso: string, withYear = false): string {
+export function formatDate(iso: string | null | undefined, withYear = false): string {
+  if (!iso || !Number.isFinite(Date.parse(iso))) return "—";
   return new Intl.DateTimeFormat("ru-RU", {
     day: "numeric",
     month: "short",
@@ -9,7 +10,8 @@ export function formatDate(iso: string, withYear = false): string {
   }).format(new Date(iso));
 }
 
-export function formatTime(iso: string): string {
+export function formatTime(iso: string | null | undefined): string {
+  if (!iso || !Number.isFinite(Date.parse(iso))) return "—";
   return new Intl.DateTimeFormat("ru-RU", {
     hour: "2-digit",
     minute: "2-digit",
@@ -20,14 +22,16 @@ export function formatTime(iso: string): string {
 
 export const nf = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 });
 
-export const number = (value: number, digits = 2) =>
-  value.toLocaleString("ru-RU", {
+export const number = (value: number | null | undefined, digits = 2) =>
+  value == null || !Number.isFinite(value) ? "—" : value.toLocaleString("ru-RU", {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   });
 
-export const stamp = (time: string) =>
-  `${formatDate(time)} · ${formatTime(time)}`;
+export const stamp = (time: string | null | undefined) =>
+  time && Number.isFinite(Date.parse(time))
+    ? `${formatDate(time)} · ${formatTime(time)}`
+    : "—";
 export const hoursLabel = (value: Horizon) =>
   value === 24 ? "24 часа" : "48 часов";
 export const turbineName = (id: TurbineId) =>

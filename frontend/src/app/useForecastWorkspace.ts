@@ -1,276 +1,153 @@
 import { useEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
-import { createDemoObservations, createDemoRun } from "../data/demo";
-import {
-  loadObservations,
-  loadRuns,
-  saveObservations,
-  saveRuns,
-} from "../data/session";
-import type { ForecastRun, Horizon, TurbineId } from "../domain/forecast";
+import { fetchWorkspace, recalculateForecast } from "../data/api";
+import type { ForecastRun, Horizon, TurbineId, WorkspaceData } from "../domain/forecast";
 import { stamp } from "../lib/format";
 import { navigation, readLocation } from "./navigation";
-import type { Page, WeatherState } from "./navigation";
+import type { Page } from "./navigation";
 
-export function useForecastWorkspace() {
-  const [runs, setRuns] = useState(loadRuns);
-  const [observations, setObservations] = useState(loadObservations);
-  const initial = useRef(readLocation(runs)).current;
+export function useForecastWorkspace(initialData: WorkspaceData) {
+  const [data, setData] = useState(initialData);
+  const { runs, observations } = data;
+  const initial = useRef(readLocation(initialData.runs)).current;
   const [page, setPage] = useState<Page>(initial.page);
   const [turbine, setTurbine] = useState<TurbineId>(initial.turbine);
   const [runId, setRunId] = useState(initial.runId);
   const [horizon, setHorizon] = useState<Horizon>(initial.horizon);
   const [hour, setHour] = useState(12);
-  const [weatherState, setWeatherState] = useState<WeatherState>("ready");
-  const [demoOpen, setDemoOpen] = useState(false);
-  const [demoScenario, setDemoScenario] = useState<"success" | "error">(
-    "success",
-  );
-  const [activeStep, setActiveStep] = useState(-1);
+  const [updateOpen, setUpdateOpen] = useState(false);
+  const [updateRun, setUpdateRun] = useState<ForecastRun | null>(null);
+  const [running, setRunning] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [notice, setNotice] = useState("");
   const [noticeWarning, setNoticeWarning] = useState(false);
-  const [includeActuals, setIncludeActuals] = useState(true);
+  const [requestError, setRequestError] = useState("");
   const [comparisonOpen, setComparisonOpen] = useState(false);
   const [historyFilter, setHistoryFilter] = useState("all");
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const replayButtonRef = useRef<HTMLButtonElement>(null);
-  const run =
-    runs.find((r) => r.id === runId) ||
-    runs.find((r) => r.turbine === turbine)!;
-  const releases = runs
-    .filter((r) => r.turbine === turbine && r.status === "success")
+  const requestRef = useRef<AbortController | null>(null);
+  const run = runs.find((item) => item.id === runId && item.turbine === turbine)
+    || runs.find((item) => item.turbine === turbine)!;
+  const releases = runs.filter((item) => item.turbine === turbine && item.status === "success")
     .sort((a, b) => a.issuedAt.localeCompare(b.issuedAt));
   const points = run.points.slice(0, horizon);
   const selected = points[Math.min(hour, points.length - 1)];
-  const peak = points.reduce((a, b) => (a.power > b.power ? a : b));
-  const previous = releases.filter((r) => r.issuedAt < run.issuedAt).at(-1);
-  const comparison = points
-    .map((p) => ({
-      ...p,
-      previous: previous?.points
-        .slice(0, previous.horizon)
-        .find((old) => old.time === p.time)?.power,
-    }))
-    .filter((p) => p.previous !== undefined);
+  const peak = points.reduce((a, b) => a.power > b.power ? a : b);
+  const previous = releases.filter((item) => item.issuedAt < run.issuedAt).at(-1);
+  const comparison = points.map((point) => ({
+    ...point, previous: previous?.points.find((old) => old.time === point.time)?.power,
+  })).filter((point) => point.previous !== undefined);
   const delta = comparison.length
-    ? comparison.reduce((sum, p) => sum + p.power - p.previous!, 0) /
-      comparison.length
-    : null;
-  const selectedRunHistory = runs
-    .filter(
-      (r) =>
-        r.turbine === turbine &&
-        (historyFilter === "all" || r.status === historyFilter),
-    )
+    ? comparison.reduce((sum, point) => sum + point.power - point.previous!, 0) / comparison.length : null;
+  const selectedRunHistory = runs.filter((item) => item.turbine === turbine
+    && (historyFilter === "all" || item.status === historyFilter))
     .sort((a, b) => b.issuedAt.localeCompare(a.issuedAt));
-  const running = activeStep >= 0;
-  const latestRun = runs
-    .filter((r) => r.turbine === turbine)
-    .sort((a, b) => b.issuedAt.localeCompare(a.issuedAt))[0];
-  const nextIssue = new Date(
-    Date.parse(latestRun.issuedAt) + 6 * 60 * 60 * 1000,
-  ).toISOString();
-  const turbineObservations = observations.find(
-    (batch) => batch.turbine === turbine,
-  );
+  const turbineObservations = observations.find((batch) => batch.turbine === turbine);
 
-  function url(nextPage = page, nextRun = runId) {
-    return `/${nextPage}?${new URLSearchParams({ turbine, run: nextRun, horizon: String(horizon) })}`;
+  function url(nextPage = page, nextRun = runId, nextTurbine = turbine) {
+    return "/" + nextPage + "?" + new URLSearchParams({ turbine: nextTurbine, run: nextRun, horizon: String(horizon) });
   }
-
-  useEffect(() => {
-    history.replaceState(null, "", url());
-  }, [page, turbine, runId, horizon]);
+  useEffect(() => { history.replaceState(null, "", url()); }, [page, turbine, runId, horizon]);
   useEffect(() => {
     const handlePop = () => {
       const next = readLocation(runs);
-      setPage(next.page);
-      setTurbine(next.turbine);
-      setRunId(next.runId);
-      setHorizon(next.horizon);
+      setPage(next.page); setTurbine(next.turbine); setRunId(next.runId); setHorizon(next.horizon);
     };
     window.addEventListener("popstate", handlePop);
     return () => window.removeEventListener("popstate", handlePop);
   }, [runs]);
-  useEffect(() => saveObservations(observations), [observations]);
-  useEffect(() => saveRuns(runs), [runs]);
+  useEffect(() => { setHour(12); }, [runId]);
+  useEffect(() => { setHour((current) => Math.min(current, horizon - 1)); }, [horizon]);
+  useEffect(() => () => requestRef.current?.abort(), []);
   useEffect(() => {
-    setHour(12);
-    setWeatherState("ready");
-  }, [runId]);
-  useEffect(() => {
-    setHour((current) => Math.min(current, horizon - 1));
-  }, [horizon]);
-  useEffect(() => {
-    if (weatherState !== "loading") return;
-    const timeout = setTimeout(() => setWeatherState("ready"), 2200);
-    return () => clearTimeout(timeout);
-  }, [weatherState]);
-  useEffect(() => () => clearTimeout(timerRef.current), []);
-  useEffect(() => {
-    if (demoOpen) dialogRef.current?.showModal();
+    if (updateOpen) dialogRef.current?.showModal();
     else dialogRef.current?.close();
-  }, [demoOpen]);
+  }, [updateOpen]);
   useEffect(() => {
-    document.title = `${navigation.find((n) => n.id === page)?.label} · Ветропрогноз`;
+    document.title = navigation.find((item) => item.id === page)?.label + " · Ветропрогноз";
   }, [page]);
 
-  function navigate(nextPage: Page, nextRun = runId) {
-    history.pushState(null, "", url(nextPage, nextRun));
-    setPage(nextPage);
-    setRunId(nextRun);
+  function navigate(nextPage: Page, nextRun = runId, nextTurbine = turbine) {
+    history.pushState(null, "", url(nextPage, nextRun, nextTurbine));
+    setPage(nextPage); setRunId(nextRun); setTurbine(nextTurbine);
     window.scrollTo({ top: 0, behavior: "instant" });
   }
-
   function navClick(event: MouseEvent<HTMLAnchorElement>, nextPage: Page) {
-    if (
-      !event.ctrlKey &&
-      !event.metaKey &&
-      !event.shiftKey &&
-      event.button === 0
-    ) {
-      event.preventDefault();
-      navigate(nextPage);
+    if (!event.ctrlKey && !event.metaKey && !event.shiftKey && event.button === 0) {
+      event.preventDefault(); navigate(nextPage);
     }
   }
-
   function changeTurbine(next: TurbineId) {
-    const equivalent =
-      runs.find(
-        (r) =>
-          r.turbine === next &&
-          r.issuedAt === run.issuedAt &&
-          r.status === run.status,
-      ) ||
-      runs.filter((r) => r.turbine === next && r.status === "success").at(-1)!;
-    setTurbine(next);
-    setRunId(equivalent.id);
+    const equivalent = runs.find((item) => item.turbine === next && item.issuedAt === run.issuedAt)
+      || runs.filter((item) => item.turbine === next).sort((a, b) => b.issuedAt.localeCompare(a.issuedAt))[0];
+    if (equivalent) { setTurbine(next); setRunId(equivalent.id); }
   }
-
-  function finishDemo(status: "success" | "error", baseRun: ForecastRun) {
-    const created = createDemoRun(baseRun.turbine, baseRun, horizon, status);
-    setRuns((current) => [...current, created]);
-    setTurbine(baseRun.turbine);
-    setActiveStep(-1);
-    setDemoOpen(false);
-    setNoticeWarning(status === "error");
-    setNotice(
-      status === "success"
-        ? `Демообновление завершено: выпуск ${stamp(created.issuedAt)} UTC сохранён в истории.${includeActuals ? " Новые измерения доступны в сравнении с фактом." : ""}`
-        : "Демонстрация сбоя: погода недоступна. Обновление не выполнено; предыдущий прогноз сохранён. Ошибка записана в историю.",
-    );
-    if (status === "success") {
-      if (includeActuals) {
-        const batch = createDemoObservations(baseRun.turbine, created.issuedAt);
-        setObservations((current) => {
-          const old = current.find((item) => item.turbine === batch.turbine);
-          const merged = new Map(
-            old?.points.map((point) => [point.time, point]),
-          );
-          batch.points.forEach((point) => merged.set(point.time, point));
-          return [
-            ...current.filter((item) => item.turbine !== batch.turbine),
-            {
-              ...batch,
-              points: [...merged.values()].sort((a, b) =>
-                a.time.localeCompare(b.time),
-              ),
-            },
-          ];
-        });
-      }
-      setWeatherState("ready");
-      navigate("forecast", created.id);
-    } else {
-      if (run.status === "error" && releases.length)
-        setRunId(releases.at(-1)!.id);
-      if (page === "history") setHistoryFilter("all");
+  function applyData(next: WorkspaceData) {
+    if (!next.runs.length) throw new Error("В архиве пока нет прогнозов. Предыдущие данные остаются на экране.");
+    setData(next);
+    if (!next.runs.some((item) => item.id === runId && item.turbine === turbine)) {
+      const replacement = next.runs.filter((item) => item.turbine === turbine)
+        .sort((a, b) => b.issuedAt.localeCompare(a.issuedAt))[0];
+      setRunId(replacement.id);
     }
-    replayButtonRef.current?.focus();
   }
-
-  function startDemo() {
-    setNotice("");
-    const baseRun = latestRun;
-    setActiveStep(0);
-    let step = 0;
-    const tick = () => {
-      if (demoScenario === "error" || step === 3) {
-        finishDemo(demoScenario, baseRun);
-        return;
-      }
-      step += 1;
-      setActiveStep(step);
-      timerRef.current = setTimeout(tick, 900);
-    };
-    timerRef.current = setTimeout(tick, 1100);
+  async function refreshData() {
+    if (requestRef.current) return;
+    const controller = new AbortController(); requestRef.current = controller;
+    setRefreshing(true); setNotice("");
+    try {
+      const next = await fetchWorkspace(controller.signal);
+      if (controller.signal.aborted) return;
+      applyData(next); setNoticeWarning(false); setNotice("Архив прогнозов и доступные измерения обновлены.");
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      setNoticeWarning(true); setNotice(error instanceof Error ? error.message : "Не удалось обновить данные.");
+    } finally {
+      requestRef.current = null;
+      if (!controller.signal.aborted) setRefreshing(false);
+    }
   }
-
-  function closeDemo() {
+  async function startRecalculation() {
+    if (requestRef.current) return;
+    const target = updateRun ?? run;
+    const controller = new AbortController(); requestRef.current = controller;
+    setRunning(true); setRequestError(""); setNotice("");
+    try {
+      const next = await recalculateForecast(target.issuedAt, controller.signal);
+      if (controller.signal.aborted) return;
+      applyData(next); setUpdateOpen(false); setNoticeWarning(false);
+      setNotice("Прогноз на " + stamp(target.issuedAt) + " UTC пересчитан для обеих турбин и сохранён на сервере.");
+      navigate("forecast", target.id, target.turbine); replayButtonRef.current?.focus();
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      setRequestError(error instanceof Error ? error.message : "Не удалось пересчитать прогноз.");
+    } finally {
+      requestRef.current = null;
+      if (!controller.signal.aborted) setRunning(false);
+    }
+  }
+  function closeUpdate() {
     if (running) return;
-    setDemoOpen(false);
-    replayButtonRef.current?.focus();
+    setUpdateOpen(false); replayButtonRef.current?.focus();
   }
-
   function openUpdate() {
-    setDemoScenario("success");
-    setDemoOpen(true);
+    if (requestRef.current) return;
+    setUpdateRun(run); setRequestError(""); setUpdateOpen(true);
   }
-
   const chartClick = (index: unknown) => {
     const parsed = Number(index);
     if (index !== null && index !== undefined && Number.isInteger(parsed))
       setHour(Math.max(0, Math.min(points.length - 1, parsed)));
   };
-
   return {
-    runs,
-    page,
-    turbine,
-    horizon,
-    hour,
-    weatherState,
-    demoScenario,
-    activeStep,
-    notice,
-    noticeWarning,
-    includeActuals,
-    comparisonOpen,
-    historyFilter,
-    dialogRef,
-    replayButtonRef,
-    run,
-    releases,
-    points,
-    selected,
-    peak,
-    previous,
-    comparison,
-    delta,
-    selectedRunHistory,
-    running,
-    nextIssue,
-    turbineObservations,
-    url,
-    navigate,
-    navClick,
-    changeTurbine,
-    startDemo,
-    closeDemo,
-    openUpdate,
-    chartClick,
-    setRunId,
-    setHorizon,
-    setHour,
-    setWeatherState,
-    setDemoOpen,
-    setDemoScenario,
-    setNotice,
-    setIncludeActuals,
-    setComparisonOpen,
-    setHistoryFilter,
+    runs, page, turbine, horizon, hour, notice, noticeWarning, requestError, updateRun,
+    comparisonOpen, historyFilter, dialogRef, replayButtonRef, run, releases,
+    points, selected, peak, previous, comparison, delta, selectedRunHistory,
+    running, refreshing, turbineObservations, meta: data.meta,
+    url, navigate, navClick, changeTurbine, startRecalculation, closeUpdate,
+    openUpdate, refreshData, chartClick, setRunId, setHorizon, setHour,
+    setUpdateOpen, setNotice, setComparisonOpen, setHistoryFilter,
   };
 }
-
 export type ForecastWorkspace = ReturnType<typeof useForecastWorkspace>;

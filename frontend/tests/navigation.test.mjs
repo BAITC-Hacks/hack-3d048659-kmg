@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readLocation } from "../src/app/navigation.ts";
-import { initialRuns } from "../src/data/demo.ts";
+import { workspaceFixture } from "./fixtures.mjs";
+const initialRuns = workspaceFixture().runs;
 
 test("direct links restore page, turbine, selected release and horizon", () => {
   const run = initialRuns.find(
-    (item) => item.turbine === "t2" && item.status === "error",
+    (item) => item.turbine === "t2",
   );
   for (const page of ["forecast", "weather", "history"]) {
     assert.deepEqual(
@@ -22,7 +23,7 @@ test("stale links and mismatched turbine releases fall back to that turbine", ()
   const otherRun = initialRuns.find((item) => item.turbine === "t1");
   const defaultRun = initialRuns.find(
     (item) =>
-      item.turbine === "t2" && item.issuedAt === "2026-02-01T00:00:00.000Z",
+      item.turbine === "t2",
   );
   for (const requestedRun of ["expired-session-run", otherRun.id]) {
     assert.deepEqual(
@@ -33,6 +34,15 @@ test("stale links and mismatched turbine releases fall back to that turbine", ()
       { page: "weather", turbine: "t2", runId: defaultRun.id, horizon: 48 },
     );
   }
+});
+
+test("empty archives do not fabricate a selected forecast", () => {
+  assert.equal(readLocation([], { pathname: "/forecast", search: "" }).runId, "");
+});
+
+test("default selection uses latest actual origin rather than a hardcoded demo date", () => {
+  const runs = [...initialRuns, { ...initialRuns[0], id: "newer", issuedAt: "2026-02-27T19:00:00Z" }];
+  assert.equal(readLocation(runs, { pathname: "/forecast", search: "" }).runId, "newer");
 });
 
 test("unknown routes and unsupported values use safe defaults", () => {

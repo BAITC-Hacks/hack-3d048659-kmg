@@ -2,7 +2,6 @@ import {
   ChevronDown,
   Clock3,
   CloudSun,
-  LoaderCircle,
   RefreshCw,
   Thermometer,
   TriangleAlert,
@@ -10,7 +9,6 @@ import {
   Zap,
 } from "lucide-react";
 import type { ForecastWorkspace } from "../app/useForecastWorkspace";
-import type { WeatherState } from "../app/navigation";
 import { number, stamp } from "../lib/format";
 import WeatherChart from "../components/charts/WeatherChart";
 import ErrorPanel from "../components/ErrorPanel";
@@ -21,8 +19,6 @@ type WeatherPageProps = Pick<
   | "run"
   | "previous"
   | "setRunId"
-  | "weatherState"
-  | "setWeatherState"
   | "openUpdate"
   | "points"
   | "horizon"
@@ -37,8 +33,6 @@ export default function WeatherPage({
   run,
   previous,
   setRunId,
-  weatherState,
-  setWeatherState,
   openUpdate,
   points,
   horizon,
@@ -48,6 +42,10 @@ export default function WeatherPage({
   hour,
   setHour,
 }: WeatherPageProps) {
+  const hasWeather = points.some((point) => point.wind !== null || point.temperature !== null);
+  const incompleteWeather = points.some((point) => point.wind === null || point.temperature === null);
+  const usesWeather = run.method !== "persistence";
+
   return (
     <>
       {run.status === "error" ? (
@@ -55,39 +53,29 @@ export default function WeatherPage({
           onPrevious={() => previous && setRunId(previous.id)}
           hasPrevious={!!previous}
         />
-      ) : weatherState === "loading" ? (
-        <section className="panel state-panel" role="status">
-          <LoaderCircle className="spin" size={32} />
-          <h2>Получаем погодный выпуск</h2>
-          <p>Демонстрация загрузки локальных данных…</p>
-          <div className="skeleton-bar" />
-          <div className="skeleton-bar short" />
-        </section>
-      ) : weatherState === "empty" ? (
+      ) : !hasWeather ? (
         <section className="panel state-panel">
           <CloudSun size={38} />
-          <h2>Для этого выпуска нет погодных данных</h2>
+          <h2>{usesWeather ? "Для этого выпуска нет погодных данных" : "Расчёт выполнен без погоды"}</h2>
           <p>
-            Это демонстрационный сценарий. Расчёт без входных данных недоступен.
+            {usesWeather
+              ? "Прогноз сохранён, но почасовые значения погоды отсутствуют в локальном архиве."
+              : "Резервный метод сохраняет последнее доступное значение мощности. Ветер и температура для этого расчёта не использовались."}
           </p>
           <button className="button primary" onClick={openUpdate}>
             <RefreshCw size={16} />
-            Повторить загрузку
+            Новый расчёт
           </button>
         </section>
       ) : (
         <>
-          {weatherState === "stale" && (
+          {incompleteWeather && (
             <div className="notice warning" role="status">
               <TriangleAlert size={19} />
               <span>
-                <strong>Демонстрация: погодный выпуск устарел.</strong> Показаны
-                ранее использованные данные. Для нового расчёта нужен свежий
-                выпуск.
+                Для части часов погодные значения недоступны. Пропуски показаны
+                разрывами на графиках и прочерками в таблице.
               </span>
-              <button className="button small" onClick={openUpdate}>
-                Обновить
-              </button>
             </div>
           )}
           <div className="weather-toolbar">
@@ -100,18 +88,8 @@ export default function WeatherPage({
             <HorizonControl value={horizon} onChange={setHorizon} />
           </div>
           <div className="weather-grid">
-            <WeatherChart
-              points={points}
-              kind="wind"
-              selected={selected}
-              onSelect={chartClick}
-            />
-            <WeatherChart
-              points={points}
-              kind="temperature"
-              selected={selected}
-              onSelect={chartClick}
-            />
+            <WeatherChart points={points} kind="wind" selected={selected} onSelect={chartClick} />
+            <WeatherChart points={points} kind="temperature" selected={selected} onSelect={chartClick} />
           </div>
           <section className="panel weather-detail">
             <div>
@@ -121,29 +99,18 @@ export default function WeatherPage({
                 <select
                   id="weather-hour"
                   value={Math.min(hour, points.length - 1)}
-                  onChange={(e) => setHour(Number(e.target.value))}
+                  onChange={(event) => setHour(Number(event.target.value))}
                 >
-                  {points.map((p, i) => (
-                    <option value={i} key={p.time}>
-                      {stamp(p.time)} UTC
-                    </option>
+                  {points.map((point, index) => (
+                    <option value={index} key={point.time}>{stamp(point.time)} UTC</option>
                   ))}
                 </select>
               </label>
             </div>
             <div className="weather-readings" aria-live="polite">
-              <span>
-                <Wind size={17} />
-                <strong>{number(selected.wind, 1)}</strong> м/с
-              </span>
-              <span>
-                <Thermometer size={17} />
-                <strong>{number(selected.temperature, 1)}</strong> °C
-              </span>
-              <span>
-                <Zap size={17} />
-                <strong>{number(selected.power)}</strong> усл. ед.
-              </span>
+              <span><Wind size={17} /><strong>{number(selected.wind, 1)}</strong> м/с</span>
+              <span><Thermometer size={17} /><strong>{number(selected.temperature, 1)}</strong> °C</span>
+              <span><Zap size={17} /><strong>{number(selected.power)}</strong> усл. ед.</span>
             </div>
           </section>
         </>
@@ -156,42 +123,16 @@ export default function WeatherPage({
           </summary>
           <div className="disclosure-body">
             <dl className="source-grid">
-              <div>
-                <dt>Источник</dt>
-                <dd>Локальный демонабор</dd>
-              </div>
-              <div>
-                <dt>Выпуск погоды · UTC</dt>
-                <dd>{stamp(run.weatherIssuedAt)}</dd>
-              </div>
-              <div>
-                <dt>Данные доступны · UTC</dt>
-                <dd>{stamp(run.weatherAvailableAt)}</dd>
-              </div>
+              <div><dt>Источник</dt><dd>{usesWeather ? run.weatherSource || "Не указан" : "Погода не использовалась"}</dd></div>
+              <div><dt>{usesWeather ? "Выпуск погоды · UTC" : "Кандидат выпуска · UTC"}</dt><dd>{stamp(run.weatherIssuedAt)}</dd></div>
+              <div><dt>{usesWeather ? "Данные доступны · UTC" : "Кандидат доступен · UTC"}</dt><dd>{stamp(run.weatherAvailableAt)}</dd></div>
             </dl>
             <p className="source-note">
-              Погодные данные доступны до расчёта от {stamp(run.issuedAt)} UTC.
-              Значения искусственные.
+              {usesWeather
+                ? `Архивный погодный выпуск для расчёта от ${stamp(run.issuedAt)} UTC.`
+                : "Указан доступный по времени кандидат выпуска. Для резервного расчёта его погодные значения не использовались."}
             </p>
           </div>
-        </details>
-        <details className="demo-settings">
-          <summary>
-            Демосценарии
-            <ChevronDown size={15} />
-          </summary>
-          <label className="scenario-control">
-            Состояние данных
-            <select
-              value={weatherState}
-              onChange={(e) => setWeatherState(e.target.value as WeatherState)}
-            >
-              <option value="ready">Доступны</option>
-              <option value="loading">Загрузка · демо</option>
-              <option value="empty">Нет данных · демо</option>
-              <option value="stale">Устарели · демо</option>
-            </select>
-          </label>
         </details>
       </div>
     </>

@@ -18,6 +18,7 @@ interface ActualComparisonProps {
   selectedRun: ForecastRun;
   observations?: ObservationBatch;
   onUpdate: () => void;
+  refreshing?: boolean;
 }
 
 const powerLabel = (value: number) =>
@@ -35,6 +36,7 @@ export function ActualComparison({
   selectedRun,
   observations,
   onUpdate,
+  refreshing = false,
 }: ActualComparisonProps) {
   const selectId = useId();
   const [open, setOpen] = useState(false);
@@ -93,14 +95,17 @@ export function ActualComparison({
     >
       <summary>
         <span>Сравнить с фактической выработкой</span>
-        <span className="disclosure-meta">Демо</span>
+        <span className="disclosure-meta">Измерения · январь</span>
         <ChevronDown size={17} aria-hidden="true" />
       </summary>
       <div className="disclosure-body actual-comparison-body">
         {!latestPoint ? (
           <div className="actual-empty">
-            <p className="muted">Измерения ещё не загружены.</p>
-            <button className="button" type="button" onClick={onUpdate}>
+            <p className="muted">
+              Измерения недоступны. В наборе сервера есть фактическая выработка
+              за январь 2026 года; измерений за февраль нет.
+            </p>
+            <button className="button" type="button" disabled={refreshing} onClick={onUpdate}>
               <RefreshCw size={16} aria-hidden="true" />
               Обновить данные
             </button>
@@ -108,7 +113,8 @@ export function ActualComparison({
         ) : (
           <>
             <p className="actual-demo-note">
-              Фактическая выработка имитируется; это не измерения ВЭС.
+              Измеренная почасовая мощность за январь 2026 года.
+              Измерений за февраль нет.
             </p>
             <p className="muted actual-cutoff">
               Данные по {stamp(latestPoint)} UTC включительно.
@@ -138,13 +144,13 @@ export function ActualComparison({
                   <>
                     <p className="muted actual-chart-description">
                       Нормализованная мощность, усл. ед. Только часы, для
-                      которых есть прогноз и демонстрационный факт.
+                      которых есть прогноз и измеренная мощность.
                     </p>
                     {open && (
                       <div
                         className="actual-comparison-chart"
                         role="img"
-                        aria-label="Сравнение прогноза и демонстрационного факта по совпадающим часам. Точные значения доступны в таблице ниже."
+                        aria-label="Сравнение прогноза и измеренной мощности по совпадающим часам. Точные значения доступны в таблице ниже."
                       >
                         <ResponsiveContainer width="100%" height="100%">
                           <LineChart
@@ -197,7 +203,7 @@ export function ActualComparison({
                             <Line
                               type="monotone"
                               dataKey="actual"
-                              name="Демонстрационный факт"
+                              name="Фактическая мощность"
                               stroke="#159e9b"
                               strokeWidth={2.5}
                               dot={rows.length === 1}
@@ -212,7 +218,7 @@ export function ActualComparison({
                         <i className="actual-legend-forecast" /> Прогноз
                       </span>
                       <span>
-                        <i className="actual-legend-observed" /> Демо-факт
+                        <i className="actual-legend-observed" /> Факт
                       </span>
                     </div>
                     <details className="actual-hourly">
@@ -224,19 +230,19 @@ export function ActualComparison({
                         className="table-scroll"
                         tabIndex={0}
                         role="region"
-                        aria-label="Почасовое сравнение прогноза и демонстрационного факта"
+                        aria-label="Почасовое сравнение прогноза и фактической мощности"
                       >
                         <table>
                           <caption className="sr-only">
                             Нормализованная мощность, условные единицы.
-                            Отклонение равно демонстрационному факту минус
+                            Отклонение равно фактической мощности минус
                             прогноз.
                           </caption>
                           <thead>
                             <tr>
                               <th scope="col">Час · UTC</th>
                               <th scope="col">Прогноз</th>
-                              <th scope="col">Демо-факт</th>
+                              <th scope="col">Факт</th>
                               <th scope="col">Факт − прогноз</th>
                             </tr>
                           </thead>
@@ -256,7 +262,9 @@ export function ActualComparison({
                   </>
                 ) : (
                   <p className="muted actual-empty">
-                    Для часов этого выпуска измерений пока нет.
+                    Для часов этого выпуска измерений нет. Доступны только
+                    январские измерения; февральский прогноз сравнить с фактом
+                    пока нельзя.
                   </p>
                 )}
               </>

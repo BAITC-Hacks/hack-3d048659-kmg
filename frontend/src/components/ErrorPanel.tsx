@@ -12,12 +12,10 @@ export default function ErrorPanel({
       <span className="soft-icon amber">
         <TriangleAlert size={28} />
       </span>
-      <span className="small-demo">ДЕМОНСТРАЦИЯ СБОЯ</span>
       <h2>Прогноз не был сформирован</h2>
       <p>
-        Источник погоды недоступен. Агент остановил расчёт на первом этапе.
-        <br />
-        Данные ошибочного запуска не используются для графиков.
+        Не удалось получить результат расчёта. Проверьте сообщение об ошибке
+        и повторите обновление. Сохранённые прогнозы остаются доступными.
       </p>
       {hasPrevious && (
         <button className="button" onClick={onPrevious}>

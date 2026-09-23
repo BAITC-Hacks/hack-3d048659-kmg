@@ -1,131 +1,90 @@
-# Running Ветропрогноз with Docker
+# Deployment
 
-This frontend-only repository builds the React application in `frontend/` and serves its production files with Nginx. The container includes the three application pages, local fonts, images, and demonstration data. It does not provide a real forecasting model or backend API.
+The application consists of a Python 3.11 API and a React build served by nginx.
+Nginx forwards `/api` to the backend over the private Compose network. Only the
+frontend port is published. Both containers run as nonroot users.
 
-## Requirements and layout
+## Local containers
 
-Use Docker Engine with Docker Compose v2.20 or newer, or a recent Docker Desktop using Linux containers. Start the Docker engine first. Node.js and npm are not needed on the host to build or run the container; the image installs the locked dependencies with `npm ci`. The first build requires access to Docker Hub and the npm registry.
-
-Run all `docker compose` commands below from the repository root:
-
-- `docker-compose.yml` coordinates the service, ports, and restart policy.
-- `frontend/Dockerfile` builds the frontend and configures its runtime.
-- `frontend/docker/nginx.conf` configures the production web server.
-- `frontend/package.json` and `frontend/package-lock.json` define application dependencies.
-
-Compose uses `frontend/` as the build context. Frontend npm commands run inside that folder.
-
-## Start locally
+Install Docker with Compose support. From the repository root:
 
 ```bash
 docker compose up --build -d --wait
+docker compose ps
 ```
 
-Open [http://127.0.0.1:8088](http://127.0.0.1:8088). Direct links to `/forecast`, `/weather`, and `/history` also work, including browser refreshes.
+Open [http://127.0.0.1:8088](http://127.0.0.1:8088). The first build requires
+network access to install the exact Python dependencies and the npm lockfile.
+The images include saved models, source measurements, forecasts, and weather
+caches. Recalculation supports the 29 archived origins shipped in the repository.
+It does not fetch a forecast for today's date.
 
-The command builds the image, starts the container in the background, and waits for its health check. The default bind address is `127.0.0.1`. The container does not replace the Vite development preview on port 5173.
+The frontend has `/healthz` for static-serving health. The backend health route
+is `/api/health`; `/api/workspace` verifies that archived application data can be
+loaded. Compose starts nginx after the backend passes its health check.
 
-## Start on a server
-
-Clone the repository onto a server with Docker, keeping `frontend/` and the root `docker-compose.yml` together. To accept connections on the server's network interfaces, run this from the repository root in Linux/macOS:
+Check the integrated stack from `frontend/` after `npm ci`:
 
 ```bash
-BIND_ADDRESS=0.0.0.0 docker compose up --build -d --wait
+npm run docker:check
 ```
 
-PowerShell equivalent:
+The check verifies both health routes, forecast data for both turbines, client
+routes, JavaScript/CSS/image delivery, cache headers, and API errors. It does not
+create a new forecast. To verify recalculation, open the forecast page and
+recalculate a selected archived release; the returned data should remain
+available after a page reload.
+
+For another published port, set `PORT` before starting Compose. In PowerShell:
 
 ```powershell
-$env:BIND_ADDRESS = "0.0.0.0"
+$env:PORT = "8090"
 docker compose up --build -d --wait
-```
-
-Open `http://YOUR_SERVER_IP:8088` and configure the server's network/firewall rules to allow the intended access to that port. No domain name is required for an initial HTTP preview.
-
-For a domain with HTTPS, place the container behind your existing reverse proxy and TLS termination. When that proxy runs on the host, retain the default local bind address and proxy to `http://127.0.0.1:8088`. HTTPS and certificate management are not configured by this repository.
-
-The restart policy is `unless-stopped`: Docker starts the service again after engine/server restarts unless it was explicitly stopped. Enable Docker startup on the server as appropriate for its operating system.
-
-## Commands
-
-| Action | Command from repository root |
-| --- | --- |
-| Build and start | `docker compose up --build -d --wait` |
-| Stop and remove this project's container/network | `docker compose down` |
-| Build without starting | `docker compose build` |
-| Follow the latest logs | `docker compose logs --follow --tail=100 web` |
-| Show status and published port | `docker compose ps` |
-
-To verify the running HTTP service, use Node.js 22.12+ and npm, then run:
-
-```bash
 cd frontend
+$env:BASE_URL = "http://127.0.0.1:8090"
 npm run docker:check
 ```
 
-This check does not start or stop containers. It verifies health, all three page routes, JavaScript/CSS and image delivery, cache headers, and 404 responses for missing assets and unimplemented API routes.
+On Linux/macOS use `PORT=8090 docker compose up --build -d --wait` and
+`BASE_URL=http://127.0.0.1:8090 npm run docker:check`.
 
-## Custom address and port
+## Stored results
 
-From the repository root in Linux/macOS:
+Committed inputs and `backend/outputs/` stay read-only in the API container.
+The `backend-runtime` named volume is mounted at `/app/backend/.runtime` and
+holds recalculated forecast overrides, logs, and any additional weather cache.
+The image creates that directory with the API user's ownership so a new volume
+is writable without running the service as root. Container restarts and rebuilds
+preserve this volume. `docker compose down` keeps it as well.
 
-```bash
-PORT=9000 docker compose up --build -d --wait
-```
+Run `docker compose logs --tail 100 backend frontend` to inspect errors, or
+`docker compose down` to stop the stack. Deleting the runtime volume removes
+recalculations and restores the dashboard to committed archive results on its
+next start; normal deployment does not require deleting it.
 
-To expose that port on all server interfaces:
+## Hosting
 
-```bash
-BIND_ADDRESS=0.0.0.0 PORT=9000 docker compose up --build -d --wait
-```
+The default bind address is `127.0.0.1`, suitable for a local machine or an
+existing reverse proxy on the host. To publish the port on a server's network
+interfaces, set `BIND_ADDRESS=0.0.0.0` and `PORT` as needed. For a shared service,
+put authentication and HTTPS at your reverse proxy before exposing it: the API
+does not implement accounts or access control. Preserve the original HTTP Host
+header through the proxy so same-origin recalculation requests are accepted.
+Do not publish the backend port directly.
 
-PowerShell equivalent:
+A custom nginx deployment must forward `/api` to the API service and preserve
+the incoming Host header, as shown in `frontend/docker/nginx.conf`. A 120-second
+upstream timeout allows time for archived model inference. Fingerprinted assets
+are cached, HTML is revalidated, and API responses use `no-store`.
 
-```powershell
-$env:BIND_ADDRESS = "0.0.0.0"
-$env:PORT = "9000"
-docker compose up --build -d --wait
-```
+## Development without Docker
 
-`BIND_ADDRESS` chooses the host interface; `PORT` chooses the host port. The container always listens on 8080. Docker Compose also reads these variables from a local root `.env` file; explicit process environment values take precedence. PowerShell environment variables remain set for that shell session; set `BIND_ADDRESS` to `127.0.0.1` and `PORT` to `8088` to restore the local defaults.
+Follow [README.md](README.md) to run the API on port 8000 and Vite on port 5173.
+For a production-build preview, use `npm run build` followed by `npm run preview`
+from `frontend/` while the API is running. The preview server proxies `/api` to
+the same local backend. It is a local verification tool, not the container web
+server.
 
-For HTTP checks against a custom address or port, set `BASE_URL` while working inside `frontend/`:
-
-```bash
-BASE_URL=http://127.0.0.1:9000 npm run docker:check
-```
-
-PowerShell equivalent:
-
-```powershell
-$env:BASE_URL = "http://127.0.0.1:9000"
-npm run docker:check
-```
-
-## Updating and stopping
-
-After updating the source, rerun the same local/server start command with the same bind address and port settings. Compose rebuilds the image and replaces the container when needed. Source files are not mounted into the running container; editing them requires a rebuild. For editing with live reload outside Docker, run `npm ci` and `npm run dev` inside `frontend/`.
-
-`docker compose down` removes this project's service container and network. It does not delete source files or Docker images. This frontend has no server-side database or persistent volume; demonstration runs are stored only in the browser tab's session storage.
-
-The build uses image tags `node:24-alpine` and `nginx:stable-alpine`. Refresh the base images intentionally with `docker compose build --pull`, then rerun the relevant start command.
-
-## Container behavior
-
-- A separate Node build stage compiles the application; only the built static files and Nginx configuration enter the runtime stage.
-- Nginx runs as its unprivileged `nginx` user on port 8080.
-- `/healthz` returns plain text `ok`. Compose startup waits for this health check.
-- Client-side routes fall back to `index.html`. Unimplemented `/api` requests return 404 instead of application HTML.
-- Fingerprinted `/assets/` files have long immutable caching; HTML is revalidated so deployments can update the application shell.
-- The build context is limited to `frontend/`, keeping Git history and root documentation outside the image build. `frontend/.dockerignore` also excludes installed dependencies, generated build output, and local `.env` files from that context.
-- Runtime environment variables do not automatically configure a compiled Vite application. A future API integration will need an explicit build-time or runtime configuration contract. No API URL or backend is fabricated here.
-
-## Troubleshooting
-
-- **Cannot connect to Docker:** start Docker Desktop/the Docker engine and ensure this user can access it.
-- **Port already allocated:** choose another `PORT`, then rerun the start command.
-- **Build fails:** use `docker compose build` to see the build error; confirm that all frontend source/build files are in this checkout and registries are reachable.
-- **Unhealthy container:** inspect `docker compose logs --tail=100 web` and `docker compose ps`.
-- **Different UI than expected:** Docker builds the source in the current Git checkout. Verify the selected branch and rebuild after changing it.
-
-References: [Docker Compose service configuration](https://docs.docker.com/reference/compose-file/services/), [Docker port publishing](https://docs.docker.com/engine/network/port-publishing/), and [Nginx routing directives](https://nginx.org/en/docs/http/ngx_http_core_module.html).
+The dashboard displays historical data: January actuals and 48-hour archived
+forecasts covering late January through early March 2026. February actuals and
+metrics cannot be supplied by the bundled source measurements.

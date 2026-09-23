@@ -5,6 +5,7 @@ import {
   ChevronRight,
   Clock3,
   Thermometer,
+  TriangleAlert,
   Wind,
   Zap,
 } from "lucide-react";
@@ -34,7 +35,8 @@ type ForecastPageProps = Pick<
   | "peak"
   | "runs"
   | "turbineObservations"
-  | "openUpdate"
+  | "refreshData"
+  | "refreshing"
   | "comparisonOpen"
   | "setComparisonOpen"
   | "comparison"
@@ -57,7 +59,8 @@ export default function ForecastPage({
   peak,
   runs,
   turbineObservations,
-  openUpdate,
+  refreshData,
+  refreshing,
   comparisonOpen,
   setComparisonOpen,
   comparison,
@@ -72,6 +75,19 @@ export default function ForecastPage({
     />
   ) : (
     <>
+      {run.fallbackUsed && (
+        <div className="notice warning" role="status">
+          <TriangleAlert size={19} />
+          <span>
+            <strong>Использован резервный расчёт.</strong>{" "}
+            {run.method === "persistence"
+              ? "Прогноз сохраняет последнее доступное значение мощности; погодные данные не использовались."
+              : run.method === "power_curve"
+                ? "Мощность рассчитана по кривой турбины."
+                : "Модель использовала более ранний доступный выпуск погоды."}
+          </span>
+        </div>
+      )}
       <div className="primary-forecast">
         <section className="panel forecast-panel">
           <div className="panel-heading">
@@ -161,7 +177,8 @@ export default function ForecastPage({
           runs={runs}
           selectedRun={run}
           observations={turbineObservations}
-          onUpdate={openUpdate}
+          onUpdate={refreshData}
+          refreshing={refreshing}
         />
         <HourlyTable
           points={points}
@@ -182,9 +199,9 @@ export default function ForecastPage({
             <ChevronDown size={17} />
           </summary>
           <div className="disclosure-body">
-            <AgentSteps run={run} activeStep={-1} />
+            <AgentSteps run={run} />
             <div className="agent-bottom">
-              <span>Демонстрация: модель пока не подключена.</span>
+              <span>Модель: {run.modelVersion}. Расчёт на архивных данных.</span>
               <a
                 className="text-link"
                 href={url("weather")}
