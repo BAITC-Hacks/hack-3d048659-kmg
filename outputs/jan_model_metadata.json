@@ -1,0 +1,31 @@
+{
+  "model_version": "hgb-jan-eval-train-before-20260101",
+  "train_rows": 47279,
+  "train_start_utc": "2023-03-10T19:00:00+00:00",
+  "train_last_target_utc": "2025-12-31T18:00:00+00:00",
+  "train_last_available_at_utc": "2025-12-31T19:00:00+00:00",
+  "train_cutoff_exclusive_utc": "2025-12-31T19:00:00+00:00",
+  "features": [
+    "wind_speed_100m",
+    "wind_speed_10m",
+    "wind_gusts_10m",
+    "temperature_2m",
+    "surface_pressure",
+    "wind_direction_sin",
+    "wind_direction_cos",
+    "hour_sin",
+    "hour_cos",
+    "year_sin",
+    "year_cos",
+    "turbine_id"
+  ],
+  "power_unit": "normalized_0_1",
+  "sklearn_version": "1.9.1",
+  "weather_source": "Open-Meteo Historical Forecast stitched archive, ecmwf_ifs",
+  "missing_label_policy": "Exclude unlabeled hours; keep labeled rows with missing weather.",
+  "recipe": {
+    "loss": "absolute_error",
+    "power_curve_weight": 0.0
+  },
+  "recipe_selection_period": "December 2025 only"
+}

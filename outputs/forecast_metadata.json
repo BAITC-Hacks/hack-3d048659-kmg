@@ -1,0 +1,13 @@
+{
+  "origins": 29,
+  "rows": 2784,
+  "weather_source": "single_runs",
+  "weather_model": "ecmwf_ifs",
+  "availability_delay_hours": 6,
+  "orchestration": "deterministic",
+  "first_origin_model": "hgb-v1-train-before-20251201",
+  "model_selection": "Most recent saved model whose training observations are available at origin",
+  "manifest": "outputs/backtest_manifest.json",
+  "target_definition": "Mean over [target_time_utc, target_time_utc+1h)",
+  "actuals_available_for_february": false
+}
