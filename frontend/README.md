@@ -16,7 +16,7 @@ npm run dev
 ```
 
 Open [http://127.0.0.1:5173](http://127.0.0.1:5173). Routes are `/forecast`,
-`/weather`, and `/history`. Turbine, release, and horizon selections are retained
+`/weather`, `/map`, and `/history`. Turbine, release, and horizon selections are retained
 in the URL. Vite proxies `/api` to `http://127.0.0.1:8000` while preserving the
 browser's Host header for same-origin validation.
 
@@ -63,3 +63,26 @@ persist on the backend and are available after a page reload.
 
 Pages and charts receive their data through application state. They do not fetch
 weather or derive observations from predicted values.
+
+## 3D turbine map
+
+`/map` lazy-loads MapLibre GL JS and Three.js. Two procedural wind turbine models
+use the positions in `backend/config.yaml` (mirrored in `src/domain/map.ts`).
+Their dimensions and orientation are illustrative; the map does not imply a
+surveyed turbine shape, terrain elevation, or live rotor telemetry.
+
+- Click a model or its compact power card to select the turbine. Drag to pan,
+  use the map controls to zoom, and right-drag or Ctrl-drag to rotate/tilt.
+  “Весь парк” restores the starting view.
+- Forecast mode uses the selected archived release and 24/48-hour horizon.
+  Both turbine cards match the same release and exact target hour.
+- “Измерения · архив” uses all available observation hours, independently of
+  the selected forecast release. Missing power remains “—”; weather is not
+  inferred from predictions in this mode. All displayed times are UTC.
+- The basemap uses OpenStreetMap raster tiles with visible attribution and
+  requires internet access. Tile failures preserve models and data; unavailable
+  WebGL shows a retry message while the readings and time controls remain usable.
+  For a large production deployment, configure an appropriate tile provider in
+  `src/components/map/TurbineMap.tsx` under that provider's usage terms.
+- The map and its GPU resources are disposed when leaving the page. Static
+  models redraw on interaction rather than continuously animating.

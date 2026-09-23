@@ -57,7 +57,7 @@ export function useForecastWorkspace(initialData: WorkspaceData) {
     window.addEventListener("popstate", handlePop);
     return () => window.removeEventListener("popstate", handlePop);
   }, [runs]);
-  useEffect(() => { setHour(12); }, [runId]);
+  useEffect(() => { setHour(12); }, [run.issuedAt]);
   useEffect(() => { setHour((current) => Math.min(current, horizon - 1)); }, [horizon]);
   useEffect(() => () => requestRef.current?.abort(), []);
   useEffect(() => {
@@ -141,7 +141,7 @@ export function useForecastWorkspace(initialData: WorkspaceData) {
       setHour(Math.max(0, Math.min(points.length - 1, parsed)));
   };
   return {
-    runs, page, turbine, horizon, hour, notice, noticeWarning, requestError, updateRun,
+    runs, observations, page, turbine, horizon, hour, notice, noticeWarning, requestError, updateRun,
     comparisonOpen, historyFilter, dialogRef, replayButtonRef, run, releases,
     points, selected, peak, previous, comparison, delta, selectedRunHistory,
     running, refreshing, turbineObservations, meta: data.meta,

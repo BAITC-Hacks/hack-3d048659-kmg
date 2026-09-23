@@ -2145,6 +2145,8 @@ tbody tr:last-child td {
   .header-inner nav {
     gap: 3px;
     margin: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .nav-item {
     font-size: 0.75rem;
