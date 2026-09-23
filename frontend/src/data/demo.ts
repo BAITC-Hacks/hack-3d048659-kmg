@@ -1,38 +1,11 @@
 // Искусственные демонстрационные данные: это не измерения ВЭС и не реальный прогноз погоды.
-
-export type TurbineId = "t1" | "t2";
-export type Horizon = 24 | 48;
-
-export interface ForecastPoint {
-  time: string;
-  power: number;
-  wind: number;
-  temperature: number;
-}
-
-export interface ActualPoint {
-  time: string;
-  power: number;
-}
-
-export interface ObservationBatch {
-  turbine: TurbineId;
-  updatedAt: string;
-  points: ActualPoint[];
-}
-
-export interface ForecastRun {
-  id: string;
-  turbine: TurbineId;
-  issuedAt: string;
-  weatherIssuedAt: string;
-  weatherAvailableAt: string;
-  horizon: Horizon;
-  status: "success" | "error";
-  reason: string;
-  points: ForecastPoint[];
-}
-
+import type {
+  ForecastPoint,
+  ForecastRun,
+  Horizon,
+  ObservationBatch,
+  TurbineId,
+} from "../domain/forecast";
 const HOUR = 60 * 60 * 1000;
 const DEMO_EPOCH = Date.UTC(2026, 0, 1);
 
@@ -231,22 +204,4 @@ export function createDemoRun(
       : "Демонстрация сбоя: источник погоды временно недоступен",
     `-demo-${Date.now()}-${demoRunSequence}`,
   );
-}
-
-export function formatDate(iso: string, withYear = false): string {
-  return new Intl.DateTimeFormat("ru-RU", {
-    day: "numeric",
-    month: "short",
-    ...(withYear ? { year: "numeric" as const } : {}),
-    timeZone: "UTC",
-  }).format(new Date(iso));
-}
-
-export function formatTime(iso: string): string {
-  return new Intl.DateTimeFormat("ru-RU", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: "UTC",
-  }).format(new Date(iso));
 }

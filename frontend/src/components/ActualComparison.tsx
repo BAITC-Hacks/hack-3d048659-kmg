@@ -9,8 +9,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { formatDate, formatTime } from "../data/demo";
-import type { ForecastRun, ObservationBatch } from "../data/demo";
+import { formatTime, stamp } from "../lib/format";
+import type { ForecastRun, ObservationBatch } from "../domain/forecast";
 import "./ActualComparison.css";
 
 interface ActualComparisonProps {
@@ -20,7 +20,6 @@ interface ActualComparisonProps {
   onUpdate: () => void;
 }
 
-const stamp = (time: string) => `${formatDate(time)} · ${formatTime(time)}`;
 const powerLabel = (value: number) =>
   value.toLocaleString("ru-RU", {
     minimumFractionDigits: 3,

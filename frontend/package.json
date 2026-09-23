@@ -10,7 +10,8 @@
     "dev": "vite --host 127.0.0.1 --port 5173 --strictPort",
     "build": "tsc -b && vite build",
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
-    "preview": "vite preview --host 127.0.0.1"
+    "preview": "vite preview --host 127.0.0.1",
+    "docker:check": "node scripts/check-container.mjs"
   },
   "dependencies": {
     "@fontsource-variable/manrope": "^5.2.6",
