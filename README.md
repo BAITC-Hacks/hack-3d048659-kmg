@@ -12,7 +12,7 @@ From the repository root, with Docker Desktop / Docker Compose running:
 docker compose up --build -d --wait
 ```
 
-Open [http://127.0.0.1:8088](http://127.0.0.1:8091). MongoDB and Redis stay on the
+Open [http://127.0.0.1:8091](http://127.0.0.1:8091). MongoDB and Redis stay on the
 private container network. The first startup imports the bundled two-windmill
 archive into MongoDB; subsequent starts preserve uploaded data and models.
 
