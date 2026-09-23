@@ -1,60 +1,61 @@
 # hack-3d048659-kmg
-Hackathon team repository for KMG
+Репозиторий команды хакатона для KMG
 
-## Development skeleton
+## Базовая структура проекта
 
-Use Python 3.11. Create a virtual environment with `python -m venv .venv`,
-then install dependencies with `python -m pip install -r requirements.txt`.
-Copy `.env.example` to `.env` locally if needed; never commit `.env`.
+Используйте Python 3.11. Создайте виртуальное окружение командой `python -m venv .venv`,
+затем установите зависимости командой `python -m pip install -r requirements.txt`.
+При необходимости скопируйте `.env.example` в локальный файл `.env`; никогда не добавляйте `.env` в коммиты.
 
-`src/weather`, `src/features`, `src/model`, and `src/agent` are empty Python
-packages. `app` is reserved for the UI, `tests` for checks, `data/raw` for
-source data, `data/weather_cache` for archived forecast caches, and
-`outputs` for results. No forecasting model is implemented.
+`src/weather`, `src/features`, `src/model` и `src/agent` — пустые пакеты Python.
+Каталог `app` предназначен для пользовательского интерфейса, `tests` — для проверок,
+`data/raw` — для исходных данных, `data/weather_cache` — для кеша архивных прогнозов,
+а `outputs` — для результатов. Модель прогнозирования пока не реализована.
 
-The initial inspection in `outputs/data_inspection.md` predates the supplied
-`data/raw/turbine_1.csv` and `data/raw/turbine_2.csv`. These raw files are now
-tracked; the initial report is a historical snapshot.
+Первичный отчёт `outputs/data_inspection.md` составлен до появления исходных CSV.
+Теперь `data/raw/turbine_1.csv` и `data/raw/turbine_2.csv` включены в репозиторий.
+Загрузчик `python -m src.data.load` преобразует их в часовые наблюдения UTC;
+актуальная статистика сохраняется в `outputs/data_profile.json`.
 
-`config.yaml` contains the supplied coordinates and numeric turbine IDs 1
-and 2, corresponding to the two raw filenames. Both turbines use the shared
-`weather_point` at 43.644174, 78.537216. Fetch weather once per run/request
-window at this point and reuse it for both turbines. Let Open-Meteo resolve
-elevation from its DEM and record the returned elevation in cache metadata.
+В `config.yaml` указаны подтверждённые координаты и идентификаторы турбин 1 и 2.
+Общая погодная точка: 43.644174, 78.537216. Погоду запрашиваем один раз на выпуск
+и диапазон времени, затем используем для обеих турбин. Высоту определяет DEM
+Open-Meteo; возвращённое значение сохраняется в метаданных кеша.
 
-The planned model is shared across turbines, with `turbine_id` as a
-categorical feature and metrics reported separately for each turbine.
-Encode NWP wind direction in degrees as `sin(direction * pi / 180)` and
-`cos(direction * pi / 180)` in `wind_direction_sin` and
-`wind_direction_cos`. Preserve missing directions as missing values. These
-features allow direction-dependent bias in complex terrain to be learned.
-These are configuration/implementation requirements; weather fetching,
-feature computation, training, and evaluation are not implemented yet.
+Планируется единая модель с категориальным признаком `turbine_id` и отдельными
+метриками для каждой турбины. Направление ветра кодируется как
+`sin(direction * pi / 180)` и `cos(direction * pi / 180)`.
 
-## Forecast output contract
 
-`outputs/forecasts_mock.csv` has 192 rows: two placeholder turbines, two
-local origins (2026-01-31 and 2026-02-01 at 00:00 Asia/Almaty), and 48 hourly
-targets per origin. All CSV timestamps are ISO 8601 UTC with a `Z` suffix.
-`horizon_h` is an integer from 1 through 48; each target is exactly that
-many hours after its origin. `predicted_power` contains synthetic normalized
-power in [0, 1], not measured power or a validated forecast. Production
-power units must be agreed after inspecting actual input data.
-`model_version` is `mock-v0`; `fallback_used` is a lowercase Boolean string
-and is `false` for these fixtures (no forecasting or fallback ran).
+## Требования к выходным данным прогноза
 
-The synthetic `weather_run_utc` is the preceding 12:00 UTC cycle, seven hours
-before the 19:00 UTC origin. This satisfies the configured six-hour
-availability delay but does not prove the availability of a real archive.
-Real backtesting must use archived forecasts whose release/availability is
-no later than the origin, and power/features available at that origin only.
-Do not substitute realized future weather or reanalysis.
+Файл `outputs/forecasts_mock.csv` содержит 192 строки: две условные турбины, два
+момента начала прогноза по местному времени (2026-01-31 и 2026-02-01 в 00:00 Asia/Almaty)
+и 48 почасовых прогнозных точек для каждого момента начала. Все временные метки
+в CSV представлены в формате ISO 8601 в UTC с суффиксом `Z`.
+`horizon_h` — целое число от 1 до 48; каждая прогнозная точка находится ровно
+на столько часов позже момента начала прогноза. Поле `predicted_power` содержит
+синтетические нормализованные значения мощности в диапазоне [0, 1], а не измеренную
+мощность или проверенный прогноз. Единицы измерения мощности для рабочего использования
+необходимо согласовать после изучения реальных входных данных.
+Значение `model_version` — `mock-v0`; `fallback_used` — строковое представление
+логического значения в нижнем регистре. Для этих тестовых данных оно равно `false`
+(ни прогнозирование, ни резервный механизм не запускались).
 
-`config.yaml` defines inclusive local backtest origins from 2026-01-31 through
-2026-02-28. Local dates/times are scheduling inputs only; convert them to UTC
-for internal processing. The mock targets extend outside February at the
-first origin; final evaluation should select the requested February targets
-once observations and evaluation rules are supplied.
+Синтетическое значение `weather_run_utc` соответствует предыдущему циклу расчёта
+в 12:00 UTC, за семь часов до начала прогноза в 19:00 UTC. Это соответствует
+заданной шестичасовой задержке доступности, но не подтверждает наличие реального архива.
+При проверке на исторических данных необходимо использовать архивные прогнозы,
+выпущенные и доступные не позднее момента начала прогноза, а также только те значения
+мощности и признаки, которые были доступны на этот момент.
+Не подменяйте их фактической погодой за будущие периоды или данными реанализа.
 
-Run the output-contract check with `python -m unittest discover -s tests -v`
-or `python -m pytest` after installing dependencies.
+В `config.yaml` заданы моменты начала прогнозов для проверки на исторических данных
+по местному времени с 2026-01-31 по 2026-02-28 включительно. Местные даты и время
+используются только для задания расписания; для внутренней обработки переводите их в UTC.
+Для первого момента начала прогноза часть тестовых прогнозных точек выходит за пределы
+февраля. При итоговой оценке следует выбрать требуемые февральские прогнозные точки
+после получения наблюдений и правил оценки.
+
+После установки зависимостей запустите проверку соответствия выходных данных требованиям
+командой `python -m unittest discover -s tests -v` или `python -m pytest`.
