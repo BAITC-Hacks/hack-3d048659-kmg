@@ -1,26 +1,40 @@
-# Ветропрогноз
+# Ветропрогноз — агентный почасовой прогноз выработки ВЭС на 48 часов
 
-React dashboard connected to a Python forecasting backend for two wind turbines.
-The forecast, weather, and history screens use the repository's saved model outputs,
-archived ECMWF IFS weather, and measured power. Power is normalized to `[0, 1]`;
-it is not MW or MWh. All displayed timestamps are UTC.
+Команда хакатона HackAlem AI (кейс KMG). Система строит почасовой прогноз
+нормализованной мощности двух ветротурбин на горизонт 1–48 ч только по данным,
+которые были доступны в момент прогноза: история измерений и **архивный** прогноз
+погоды ECMWF IFS того выпуска, который уже был опубликован.
 
-## Available data
+- Турбина 1: 43.645150, 78.535604; турбина 2: 43.643198, 78.538828 (~340 м, одна ячейка ECMWF).
+- Мощность нормализована в `[0, 1]` (не МВт). Внутри системы всё время — UTC;
+  исходные файлы в местном времени UTC+05:00.
+- Бэктест: 29 запусков прогноза — местная полночь 31.01…28.02.2026
+  (`2026-01-30T19:00Z` … `2026-02-27T19:00Z`), 2 турбины × 48 часов.
 
-- 29 forecast origins from `2026-01-30T19:00Z` through `2026-02-27T19:00Z`
-  (local midnights January 31 through February 28, UTC+05:00).
-- Each origin contains 48 hourly predictions for each turbine. Target hours extend
-  into early March at the end of the archive.
-- Observations exposed to the dashboard cover January 2026. Source measurements
-  stop on January 31 local time; February actuals and February evaluation metrics
-  are unavailable. Missing observations remain missing.
-- Recalculation runs the existing forecasting pipeline for a selected archived
-  origin and both turbines. The API does not forecast for today's date.
+## Быстрый запуск (для проверяющих)
 
-## Run locally
+Всё нужное лежит в репозитории: исходные данные, архив погодных выпусков,
+обученные модели. **Сеть и API-ключи для работы не нужны.**
 
-Use Python 3.11 and Node.js 22.12 or newer (Node.js 24 is used by the container).
-Run the backend in one terminal from the repository root:
+### Вариант 1 — Docker (рекомендуется)
+
+Нужен запущенный Docker Desktop / Docker Engine с Compose v2.
+
+```bash
+git clone https://github.com/BAITC-Hacks/hack-3d048659-kmg.git
+cd hack-3d048659-kmg
+docker compose up --build -d --wait
+```
+
+Откройте http://127.0.0.1:8088. Поднимаются два контейнера: `backend`
+(Python API прогноза) и `frontend` (React + nginx, проксирует `/api` в backend).
+Остановка: `docker compose down`. Подробнее и запуск на сервере — [DEPLOYMENT.md](DEPLOYMENT.md).
+
+### Вариант 2 — без Docker
+
+Нужны Python 3.11 и Node.js ≥ 22.12. Два терминала из корня репозитория.
+
+Терминал 1 — backend (Windows PowerShell):
 
 ```powershell
 cd backend
@@ -29,61 +43,111 @@ py -3.11 -m venv .venv
 .\.venv\Scripts\python.exe -m src.api --host 127.0.0.1 --port 8000
 ```
 
-On Linux/macOS, use `python3.11 -m venv .venv` and `.venv/bin/python` in place
-of the Windows commands. The exact versions in `backend/requirements.txt` are
-needed to load the saved models.
+Linux/macOS: `python3.11 -m venv .venv` и `.venv/bin/python` вместо Windows-путей.
+Версии в `requirements.txt` закреплены — они нужны для загрузки сохранённых моделей.
 
-In another terminal:
+Терминал 2 — frontend:
 
-```powershell
+```bash
 cd frontend
 npm ci
 npm run dev
 ```
 
-Open [http://127.0.0.1:5173](http://127.0.0.1:5173). Vite forwards `/api` to
-the backend on port 8000. Both processes must run. An API failure appears in
-the dashboard with a retry action.
+Откройте http://127.0.0.1:5173 (Vite перенаправляет `/api` на порт 8000).
 
-For the container setup, run `docker compose up --build -d --wait` from the
-repository root and open [http://127.0.0.1:8088](http://127.0.0.1:8088).
-See [deployment instructions](DEPLOYMENT.md) for configuration and verification.
-
-## Project structure
-
-| Directory | Contents |
-| --- | --- |
-| [`frontend/`](frontend/README.md) | React application, API adapter, UI tests, and nginx configuration |
-| [`backend/`](backend/README.md) | HTTP API, forecast pipeline, tests, configuration, archived inputs, and models |
-| `backend/.runtime/` | Local API recalculations, run logs, and any additional weather cache; ignored by Git |
-
-The API reads committed results from `backend/outputs/`. API recalculations
-persist separate runtime overrides without changing those reference results.
-Reproducing or training the original pipeline through its command-line tools
-is documented in [backend/README.md](backend/README.md).
-
-## API
-
-| Method and route | Behavior |
-| --- | --- |
-| `GET /api/health` | Returns `{ "status": "ok" }` |
-| `GET /api/workspace` | Returns `{ runs, observations, meta }` for the dashboard |
-| `POST /api/forecasts` | Accepts `{ "origin": "2026-01-30T19:00:00Z" }`, recalculates both turbines, and returns the updated workspace |
-
-POST requests use `Content-Type: application/json`. Origins must match an
-existing archived origin. Errors return `{ "error": { "code", "message" } }`
-with an appropriate HTTP status. Browser requests use the frontend's same-origin
-proxy; cross-origin writes are rejected.
-
-## Verification
+### Вариант 3 — только расчёт, без интерфейса
 
 ```powershell
 cd backend
-.\.venv\Scripts\python.exe -m pytest -p no:cacheprovider
-cd ../frontend
+.\.venv\Scripts\python.exe -m src.agent.run --backtest --no-llm   # 29 origins -> outputs/forecasts.csv
+.\.venv\Scripts\python.exe -m src.agent.run --origin 2026-02-10T19:00Z --no-llm   # один запуск
+.\.venv\Scripts\python.exe -m src.eval.backtest_jan              # январский бэктест -> outputs/metrics.json
+```
+
+## Проверка
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m pytest -p no:cacheprovider -q
+cd ..\frontend
 npm test
 npm run build
 ```
 
-After starting the container stack, run `npm run docker:check` from `frontend/`
-to check the UI, API, forecast data, and static asset delivery.
+После `docker compose up` из `frontend/`: `npm run docker:check` — проверка UI, API и данных.
+
+## Что внутри
+
+**Агент** (`backend/src/agent/`), детерминированная оркестрация, режим `--no-llm` по умолчанию:
+
+1. `select_weather_run` — последний выпуск ECMWF (00/06/12/18Z), для которого
+   `init + 6 ч ≤ origin` (задержка публикации 6 ч).
+2. `fetch_weather` — Open-Meteo Single Runs API, ответ кешируется с метаданными.
+3. `prepare_features` → `predict` — модель, выбранная так, чтобы её обучающие данные
+   были доступны на момент origin.
+4. `validate_forecast` — 48 часов на турбину, значения в [0,1], UTC, `run + 6 ч ≤ origin`.
+5. `save_forecast` / `reforecast` — идемпотентная запись и перерасчёт.
+6. **Fallback:** выпуск недоступен → предыдущий выпуск → кривая мощности → persistence;
+   в результате ставится `fallback_used=true`, каждый шаг пишется в `agent_runs.jsonl`.
+   Демонстрация: `python -m src.agent.run --origin 2026-01-31T19:00Z --simulate-missing-run`.
+
+**Модель:** HistGradientBoostingRegressor (loss=`absolute_error`, выбран на декабре 2025)
+на прогнозной погоде (ветер 10/100 м, порывы, температура, давление, sin/cos направления),
+календарных признаках и `turbine_id`. Базовые линии: эмпирическая кривая мощности
+(медиана по бинам 0,5 м/с) и persistence.
+
+**Защита от утечки данных:**
+- обучение — только на часах до origin (production-модель до 2026-02-01 00:00 местного,
+  отдельная as-of модель для первого origin 31.01);
+- тест — только архивные Single Runs, доступные на момент прогноза; фактическая погода
+  и сшитый Historical Forecast в тесте не используются;
+- проверки встроены в код (`assert_bundle_available`, `validate_forecast`) и покрыты тестами.
+
+## Результаты
+
+- `backend/outputs/forecasts.csv` — 2784 строки (29 origins × 2 турбины × 48 ч).
+  Колонки: `turbine_id, forecast_origin_utc, weather_run_utc, target_time_utc, horizon_h,
+  predicted_power, model_version, fallback_used`.
+- Фактических измерений за февраль в исходных данных нет (ряд заканчивается
+  2026-01-31 23:50 местного), поэтому метрики посчитаны на **честном январском бэктесте**
+  по тем же правилам: модель обучена до 2026-01-01, origins 01.01–30.01, только архивные
+  выпуски погоды (`backend/outputs/metrics.json`, n = 2878).
+
+| Горизонт | Модель MAE / RMSE | Кривая мощности MAE / RMSE | Persistence MAE / RMSE |
+|---|---|---|---|
+| 1–24 ч | **0.139** / **0.208** | 0.149 / 0.220 | 0.322 / 0.456 |
+| 25–48 ч | **0.163** / **0.244** | 0.168 / 0.246 | 0.355 / 0.466 |
+| Турбина 1 | **0.149** / **0.223** | 0.157 / 0.231 | 0.340 / 0.462 |
+| Турбина 2 | **0.153** / **0.229** | 0.160 / 0.235 | 0.337 / 0.459 |
+
+## API backend
+
+| Метод | Назначение |
+|---|---|
+| `GET /api/health` | `{"status":"ok"}` |
+| `GET /api/workspace` | прогнозы, январские измерения, метаданные |
+| `POST /api/forecasts` `{"origin":"2026-02-10T19:00:00Z"}` | пересчёт обеих турбин агентом |
+
+Подробности: [backend/README.md](backend/README.md).
+
+## Структура
+
+| Путь | Содержимое |
+|---|---|
+| `backend/` | агент, модель, API, тесты, `config.yaml`, данные, погодный кеш, модели и результаты |
+| `frontend/` | React/Vite-дашборд, тесты, Dockerfile и nginx ([frontend/README.md](frontend/README.md)) |
+| `docker-compose.yml`, `DEPLOYMENT.md` | запуск двух контейнеров |
+
+## Сторонние библиотеки и источники данных
+
+- Python: pandas, numpy, scikit-learn, joblib, threadpoolctl, requests, pyarrow, PyYAML, pytest
+  (версии — `backend/requirements.txt`).
+- Frontend: React, Vite, TypeScript, Recharts, lucide-react, шрифт Manrope (@fontsource);
+  полный список с версиями — `frontend/package.json`.
+- Инфраструктура: Docker, nginx, Node.js, Python.
+- Погода: [Open-Meteo Historical Forecast API](https://open-meteo.com/en/docs/historical-forecast-api)
+  (обучающий ряд) и [Open-Meteo Single Runs API](https://open-meteo.com/en/docs/single-runs-api)
+  (архивные выпуски для прогноза), модель ECMWF IFS (`ecmwf_ifs`).
+- Измерения турбин: данные организаторов, `backend/data/raw/`.
+- При разработке использовались AI-ассистенты для генерации и ревью кода.
