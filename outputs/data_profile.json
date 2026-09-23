@@ -1,0 +1,76 @@
+[
+  {
+    "turbine_id": 1,
+    "encoding": "utf-8-sig",
+    "delimiter": ",",
+    "columns_dtypes": {
+      "record_id": "int64",
+      "time": "datetime64[us, UTC]",
+      "measured_wind": "float64",
+      "power": "float64",
+      "measured_temperature": "float64"
+    },
+    "source_timezone_assumption": "fixed UTC+05:00 (not inferred)",
+    "raw_rows": 142360,
+    "hourly_rows": 25392,
+    "start_utc": "2023-03-10T19:00:00+00:00",
+    "end_utc": "2026-01-31T18:50:00+00:00",
+    "modal_step_minutes": 10.0,
+    "missing_raw": {
+      "record_id": 0,
+      "time": 0,
+      "measured_wind": 0,
+      "power": 0,
+      "measured_temperature": 0
+    },
+    "missing_hourly": {
+      "measured_wind": 1629,
+      "power": 1629,
+      "measured_temperature": 1629
+    },
+    "partial_hours": 96,
+    "raw_power_min": 0.0,
+    "raw_power_max": 1.0,
+    "hourly_power_min": 0.0,
+    "hourly_power_max": 0.9983333333333334,
+    "temperature_peak_hour_local": 15,
+    "temperature_peak_hour_utc": 10
+  },
+  {
+    "turbine_id": 2,
+    "encoding": "utf-8-sig",
+    "delimiter": ",",
+    "columns_dtypes": {
+      "record_id": "int64",
+      "time": "datetime64[us, UTC]",
+      "measured_wind": "float64",
+      "power": "float64",
+      "measured_temperature": "float64"
+    },
+    "source_timezone_assumption": "fixed UTC+05:00 (not inferred)",
+    "raw_rows": 149499,
+    "hourly_rows": 25392,
+    "start_utc": "2023-03-10T19:00:00+00:00",
+    "end_utc": "2026-01-31T18:50:00+00:00",
+    "modal_step_minutes": 10.0,
+    "missing_raw": {
+      "record_id": 0,
+      "time": 0,
+      "measured_wind": 0,
+      "power": 0,
+      "measured_temperature": 0
+    },
+    "missing_hourly": {
+      "measured_wind": 388,
+      "power": 388,
+      "measured_temperature": 388
+    },
+    "partial_hours": 219,
+    "raw_power_min": 0.0,
+    "raw_power_max": 1.0,
+    "hourly_power_min": 0.0,
+    "hourly_power_max": 0.995,
+    "temperature_peak_hour_local": 15,
+    "temperature_peak_hour_utc": 10
+  }
+]
