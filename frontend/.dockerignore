@@ -1,0 +1,22 @@
+# Only frontend build inputs enter the Docker build context.
+**
+!Dockerfile
+!.dockerignore
+!package.json
+!package-lock.json
+!index.html
+!tsconfig*.json
+!vite.config.*
+!src/
+!src/**
+!public/
+!public/**
+!docker/
+!docker/nginx.conf
+
+# Keep local environment files and generated files excluded even if nested.
+**/.env
+**/.env.*
+**/node_modules
+**/.git
+**/*.tsbuildinfo

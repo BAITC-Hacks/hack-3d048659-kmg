@@ -1,0 +1,18 @@
+# Only the API, its dependencies, configuration, and archived inputs are shipped.
+**
+!Dockerfile
+!.dockerignore
+!requirements.txt
+!config.yaml
+!src/
+!src/**
+!data/
+!data/**
+!outputs/
+!outputs/**
+
+**/__pycache__
+**/*.py[cod]
+**/.env
+**/.env.*
+**/.runtime
