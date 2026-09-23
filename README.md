@@ -12,9 +12,24 @@ packages. `app` is reserved for the UI, `tests` for checks, `data/raw` for
 source data, `data/weather_cache` for archived forecast caches, and
 `outputs` for results. No forecasting model is implemented.
 
-See `outputs/data_inspection.md` for the inspection report: no source data
-was present in the repository. Turbine coordinates and IDs in `config.yaml`
-are placeholders and must be confirmed before forecasting.
+The initial inspection in `outputs/data_inspection.md` predates the supplied
+`data/raw/turbine_1.csv` and `data/raw/turbine_2.csv`. These raw files are now
+tracked; the initial report is a historical snapshot.
+
+`config.yaml` contains the supplied coordinates and numeric turbine IDs 1
+and 2, corresponding to the two raw filenames. Both turbines use the shared
+`weather_point` at 43.644174, 78.537216. Fetch weather once per run/request
+window at this point and reuse it for both turbines. Let Open-Meteo resolve
+elevation from its DEM and record the returned elevation in cache metadata.
+
+The planned model is shared across turbines, with `turbine_id` as a
+categorical feature and metrics reported separately for each turbine.
+Encode NWP wind direction in degrees as `sin(direction * pi / 180)` and
+`cos(direction * pi / 180)` in `wind_direction_sin` and
+`wind_direction_cos`. Preserve missing directions as missing values. These
+features allow direction-dependent bias in complex terrain to be learned.
+These are configuration/implementation requirements; weather fetching,
+feature computation, training, and evaluation are not implemented yet.
 
 ## Forecast output contract
 
