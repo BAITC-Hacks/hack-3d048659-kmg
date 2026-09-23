@@ -4,6 +4,8 @@ import json
 import joblib
 import numpy as np
 import pandas as pd
+import sklearn
+from threadpoolctl import threadpool_limits
 from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
@@ -14,6 +16,7 @@ from src.weather.client import WeatherClient
 
 TRAIN_END = pd.Timestamp('2025-12-01', tz=LOCAL_TZ).tz_convert('UTC')
 MODEL_VERSION = 'hgb-v1-train-before-20251201'
+PRODUCTION_VERSION = 'hgb-v2-train-before-20260201'
 
 
 def training_rows(frame, cutoff=TRAIN_END):
@@ -24,11 +27,43 @@ def training_rows(frame, cutoff=TRAIN_END):
 
 def fit_power_curves(training):
     curves = {}
-    for turbine_id, group in training.groupby('turbine_id'):
+    for turbine_id, group in training.dropna(subset=['measured_wind', 'power']).groupby('turbine_id'):
         bins = np.floor(group.measured_wind / 0.5).astype(int)
         curve = group.groupby(bins).power.median().sort_index()
         curves[int(turbine_id)] = (curve.index.to_numpy() * 0.5 + 0.25, curve.to_numpy())
     return curves
+
+
+def fit_bundle(frame, cutoff, model_version):
+    """Fit all labeled, available rows; HGB accepts missing weather features."""
+    cutoff = min(pd.Timestamp(cutoff), HISTORY_END)
+    train = frame.loc[(frame.time < cutoff) & (frame.available_at_utc <= cutoff)].dropna(subset=['power'])
+    if train.empty:
+        raise ValueError('No labeled observations available before cutoff')
+    model = HistGradientBoostingRegressor(max_iter=200, learning_rate=0.06,
+                                         max_leaf_nodes=20, l2_regularization=1.0,
+                                         early_stopping=False, random_state=42,
+                                         categorical_features=['turbine_id'])
+    with threadpool_limits(limits=4):
+        model.fit(build_features(train), train.power)
+    metadata = {
+        'model_version': model_version, 'train_rows': len(train),
+        'train_start_utc': train.time.min().isoformat(),
+        'train_last_target_utc': train.time.max().isoformat(),
+        'train_last_available_at_utc': train.available_at_utc.max().isoformat(),
+        'train_cutoff_exclusive_utc': cutoff.isoformat(),
+        'features': list(build_features(train).columns), 'power_unit': 'normalized_0_1',
+        'sklearn_version': sklearn.__version__,
+        'weather_source': 'Open-Meteo Historical Forecast stitched archive, ecmwf_ifs',
+        'missing_label_policy': 'Exclude unlabeled hours; keep labeled rows with missing weather.',
+    }
+    return {'model': model, 'curves': fit_power_curves(train), 'metadata': metadata}
+
+
+def export_power_curves(curves, path):
+    rows = [(turbine, float(center - 0.25), float(power))
+            for turbine, (centers, powers) in curves.items() for center, power in zip(centers, powers)]
+    pd.DataFrame(rows, columns=['turbine_id', 'wind_bin', 'power_median']).to_csv(path, index=False)
 
 
 def predict_curve(frame, curves):
@@ -71,7 +106,8 @@ def train_and_evaluate(frame):
                                          max_leaf_nodes=20, l2_regularization=1.0,
                                          early_stopping=False, random_state=42,
                                          categorical_features=['turbine_id'])
-    model.fit(build_features(train), train.power)
+    with threadpool_limits(limits=4):
+        model.fit(build_features(train), train.power)
     curves = fit_power_curves(train)
     validation = validation_pairs(frame)
     validation['model'] = np.clip(model.predict(build_features(validation)), 0, 1)
@@ -102,10 +138,15 @@ def main():
     frame = join_weather(observations, WeatherClient().historical())
     model, curves, metrics, validation, metadata = train_and_evaluate(frame)
     output = ROOT / 'outputs'
-    joblib.dump({'model': model, 'curves': curves, 'metadata': metadata}, output / 'hgb_model.joblib')
+    joblib.dump({'model': model, 'curves': curves, 'metadata': metadata}, output / 'hgb_validation_model.joblib')
     metrics.to_csv(output / 'validation_metrics.csv', index=False)
     validation.to_parquet(output / 'validation_predictions.parquet', index=False)
-    (output / 'model_metadata.json').write_text(json.dumps(metadata, indent=2), encoding='utf-8')
+    (output / 'validation_model_metadata.json').write_text(json.dumps(metadata, indent=2), encoding='utf-8')
+    production = fit_bundle(frame, HISTORY_END, PRODUCTION_VERSION)
+    joblib.dump(production, output / 'hgb_model.joblib')
+    export_power_curves(production['curves'], output / 'power_curve.csv')
+    (output / 'model_metadata.json').write_text(json.dumps(production['metadata'], indent=2), encoding='utf-8')
+    print('Production:', json.dumps(production['metadata'], indent=2))
     print(json.dumps(metadata, indent=2))
     print(metrics.to_string(index=False))
 
