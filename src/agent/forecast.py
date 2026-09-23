@@ -2,7 +2,6 @@
 import argparse
 import json
 
-import joblib
 import numpy as np
 import pandas as pd
 
@@ -64,11 +63,11 @@ def main():
         run = run.tz_localize('UTC')
     run = run.tz_convert('UTC')
     config = read_config()
-    # Load only the artifact generated locally by src.model.train.
-    bundle = joblib.load(ROOT / 'outputs/hgb_model.joblib')
+    from src.agent.tools import load_bundle, save_forecast
+    bundle = load_bundle(origin)
     weather = WeatherClient(config).single_run(run.isoformat())
     output = make_forecast(bundle, weather, origin, run, config)
-    output.to_csv(ROOT / 'outputs/forecasts.csv', index=False, float_format='%.6f')
+    save_forecast(output)
     metadata = dict(origin_utc=origin.isoformat(), weather_run_utc=run.isoformat(),
                     assumed_weather_available_at_utc=(run + pd.Timedelta(hours=config['availability_delay_hours'])).isoformat(),
                     weather_source='Open-Meteo Single Runs API',

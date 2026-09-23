@@ -1,44 +1,13 @@
 {
-  "origin_utc": "2026-01-30T19:00:00+00:00",
-  "weather_run_utc": "2026-01-30T12:00:00+00:00",
-  "assumed_weather_available_at_utc": "2026-01-30T18:00:00+00:00",
-  "weather_source": "Open-Meteo Single Runs API",
+  "origins": 29,
+  "rows": 2784,
+  "weather_source": "single_runs",
   "weather_model": "ecmwf_ifs",
-  "weather_point": {
-    "lat": 43.644174,
-    "lon": 78.537216,
-    "elevation": null
-  },
-  "returned_elevation_metadata": "data/weather_cache/run_*.json",
-  "model_training": {
-    "model_version": "hgb-v1-train-before-20251201",
-    "train_rows": 45784,
-    "train_start_utc": "2023-03-11T00:00:00+00:00",
-    "train_last_target_utc": "2025-11-30T18:00:00+00:00",
-    "train_last_available_at_utc": "2025-11-30T19:00:00+00:00",
-    "train_cutoff_exclusive_utc": "2025-11-30T19:00:00+00:00",
-    "validation_end_exclusive_utc": "2026-01-31T19:00:00+00:00",
-    "features": [
-      "wind_speed_100m",
-      "wind_speed_10m",
-      "wind_gusts_10m",
-      "temperature_2m",
-      "surface_pressure",
-      "wind_direction_sin",
-      "wind_direction_cos",
-      "hour_sin",
-      "hour_cos",
-      "year_sin",
-      "year_cos",
-      "turbine_id"
-    ],
-    "power_unit": "normalized_0_1",
-    "validation_design": "daily local midnight origins; h=1..48; common target rows; fixed origin persistence",
-    "weather_source": "Open-Meteo Historical Forecast stitched archive, ecmwf_ifs",
-    "run_aware_backtest": false,
-    "limitation": "Stitched weather uses short leads and cannot prove availability at each origin; not a leakage-free 48h forecast score."
-  },
-  "rows": 96,
-  "fallback_used": false,
-  "target_definition": "Hourly mean over [target_time_utc, target_time_utc + 1 hour)"
+  "availability_delay_hours": 6,
+  "orchestration": "deterministic",
+  "first_origin_model": "hgb-v1-train-before-20251201",
+  "model_selection": "Most recent saved model whose training observations are available at origin",
+  "manifest": "outputs/backtest_manifest.json",
+  "target_definition": "Mean over [target_time_utc, target_time_utc+1h)",
+  "actuals_available_for_february": false
 }
