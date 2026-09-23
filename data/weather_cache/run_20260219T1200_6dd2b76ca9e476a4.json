@@ -1,0 +1,41 @@
+{
+  "latitude": 43.620384,
+  "longitude": 78.47891,
+  "generationtime_ms": 0.22363662719726562,
+  "utc_offset_seconds": 0,
+  "timezone": "GMT",
+  "timezone_abbreviation": "GMT",
+  "elevation": 555.0,
+  "hourly_units": {
+    "time": "iso8601",
+    "wind_speed_100m": "m/s",
+    "wind_direction_100m": "°",
+    "wind_speed_10m": "m/s",
+    "wind_gusts_10m": "m/s",
+    "temperature_2m": "°C",
+    "surface_pressure": "hPa"
+  },
+  "url": "https://single-runs-api.open-meteo.com/v1/forecast",
+  "request": {
+    "latitude": 43.644174,
+    "longitude": 78.537216,
+    "models": "ecmwf_ifs",
+    "timezone": "UTC",
+    "wind_speed_unit": "ms",
+    "hourly": "wind_speed_100m,wind_direction_100m,wind_speed_10m,wind_gusts_10m,temperature_2m,surface_pressure",
+    "run": "2026-02-19T12:00"
+  },
+  "retrieved_at_utc": "2026-09-23T10:32:35.471947+00:00",
+  "source_kind": "single_run",
+  "rows": 168,
+  "null_counts": {
+    "time": 0,
+    "wind_speed_100m": 0,
+    "wind_direction_100m": 0,
+    "wind_speed_10m": 0,
+    "wind_gusts_10m": 1,
+    "temperature_2m": 0,
+    "surface_pressure": 0,
+    "weather_run_utc": 0
+  }
+}

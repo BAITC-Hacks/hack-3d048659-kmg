@@ -1,0 +1,205 @@
+[
+  {
+    "origin_utc": "2026-01-30T19:00:00Z",
+    "weather_run_utc": "2026-01-30T12:00:00Z",
+    "model_version": "hgb-v1-train-before-20251201",
+    "fallback_used": "false",
+    "rows": 96
+  },
+  {
+    "origin_utc": "2026-01-31T19:00:00Z",
+    "weather_run_utc": "2026-01-31T12:00:00Z",
+    "model_version": "hgb-v2-train-before-20260201",
+    "fallback_used": "false",
+    "rows": 96
+  },
+  {
+    "origin_utc": "2026-02-01T19:00:00Z",
+    "weather_run_utc": "2026-02-01T12:00:00Z",
+    "model_version": "hgb-v2-train-before-20260201",
+    "fallback_used": "false",
+    "rows": 96
+  },
+  {
+    "origin_utc": "2026-02-02T19:00:00Z",
+    "weather_run_utc": "2026-02-02T12:00:00Z",
+    "model_version": "hgb-v2-train-before-20260201",
+    "fallback_used": "false",
+    "rows": 96
+  },
+  {
+    "origin_utc": "2026-02-03T19:00:00Z",
+    "weather_run_utc": "2026-02-03T12:00:00Z",
+    "model_version": "hgb-v2-train-before-20260201",
+    "fallback_used": "false",
+    "rows": 96
+  },
+  {
+    "origin_utc": "2026-02-04T19:00:00Z",
+    "weather_run_utc": "2026-02-04T12:00:00Z",
+    "model_version": "hgb-v2-train-before-20260201",
+    "fallback_used": "false",
+    "rows": 96
+  },
+  {
+    "origin_utc": "2026-02-05T19:00:00Z",
+    "weather_run_utc": "2026-02-05T12:00:00Z",
+    "model_version": "hgb-v2-train-before-20260201",
+    "fallback_used": "false",
+    "rows": 96
+  },
+  {
+    "origin_utc": "2026-02-06T19:00:00Z",
+    "weather_run_utc": "2026-02-06T12:00:00Z",
+    "model_version": "hgb-v2-train-before-20260201",
+    "fallback_used": "false",
+    "rows": 96
+  },
+  {
+    "origin_utc": "2026-02-07T19:00:00Z",
+    "weather_run_utc": "2026-02-07T12:00:00Z",
+    "model_version": "hgb-v2-train-before-20260201",
+    "fallback_used": "false",
+    "rows": 96
+  },
+  {
+    "origin_utc": "2026-02-08T19:00:00Z",
+    "weather_run_utc": "2026-02-08T12:00:00Z",
+    "model_version": "hgb-v2-train-before-20260201",
+    "fallback_used": "false",
+    "rows": 96
+  },
+  {
+    "origin_utc": "2026-02-09T19:00:00Z",
+    "weather_run_utc": "2026-02-09T12:00:00Z",
+    "model_version": "hgb-v2-train-before-20260201",
+    "fallback_used": "false",
+    "rows": 96
+  },
+  {
+    "origin_utc": "2026-02-10T19:00:00Z",
+    "weather_run_utc": "2026-02-10T12:00:00Z",
+    "model_version": "hgb-v2-train-before-20260201",
+    "fallback_used": "false",
+    "rows": 96
+  },
+  {
+    "origin_utc": "2026-02-11T19:00:00Z",
+    "weather_run_utc": "2026-02-11T12:00:00Z",
+    "model_version": "hgb-v2-train-before-20260201",
+    "fallback_used": "false",
+    "rows": 96
+  },
+  {
+    "origin_utc": "2026-02-12T19:00:00Z",
+    "weather_run_utc": "2026-02-12T12:00:00Z",
+    "model_version": "hgb-v2-train-before-20260201",
+    "fallback_used": "false",
+    "rows": 96
+  },
+  {
+    "origin_utc": "2026-02-13T19:00:00Z",
+    "weather_run_utc": "2026-02-13T12:00:00Z",
+    "model_version": "hgb-v2-train-before-20260201",
+    "fallback_used": "false",
+    "rows": 96
+  },
+  {
+    "origin_utc": "2026-02-14T19:00:00Z",
+    "weather_run_utc": "2026-02-14T12:00:00Z",
+    "model_version": "hgb-v2-train-before-20260201",
+    "fallback_used": "false",
+    "rows": 96
+  },
+  {
+    "origin_utc": "2026-02-15T19:00:00Z",
+    "weather_run_utc": "2026-02-15T12:00:00Z",
+    "model_version": "hgb-v2-train-before-20260201",
+    "fallback_used": "false",
+    "rows": 96
+  },
+  {
+    "origin_utc": "2026-02-16T19:00:00Z",
+    "weather_run_utc": "2026-02-16T12:00:00Z",
+    "model_version": "hgb-v2-train-before-20260201",
+    "fallback_used": "false",
+    "rows": 96
+  },
+  {
+    "origin_utc": "2026-02-17T19:00:00Z",
+    "weather_run_utc": "2026-02-17T12:00:00Z",
+    "model_version": "hgb-v2-train-before-20260201",
+    "fallback_used": "false",
+    "rows": 96
+  },
+  {
+    "origin_utc": "2026-02-18T19:00:00Z",
+    "weather_run_utc": "2026-02-18T12:00:00Z",
+    "model_version": "hgb-v2-train-before-20260201",
+    "fallback_used": "false",
+    "rows": 96
+  },
+  {
+    "origin_utc": "2026-02-19T19:00:00Z",
+    "weather_run_utc": "2026-02-19T12:00:00Z",
+    "model_version": "hgb-v2-train-before-20260201",
+    "fallback_used": "false",
+    "rows": 96
+  },
+  {
+    "origin_utc": "2026-02-20T19:00:00Z",
+    "weather_run_utc": "2026-02-20T12:00:00Z",
+    "model_version": "hgb-v2-train-before-20260201",
+    "fallback_used": "false",
+    "rows": 96
+  },
+  {
+    "origin_utc": "2026-02-21T19:00:00Z",
+    "weather_run_utc": "2026-02-21T12:00:00Z",
+    "model_version": "hgb-v2-train-before-20260201",
+    "fallback_used": "false",
+    "rows": 96
+  },
+  {
+    "origin_utc": "2026-02-22T19:00:00Z",
+    "weather_run_utc": "2026-02-22T12:00:00Z",
+    "model_version": "hgb-v2-train-before-20260201",
+    "fallback_used": "false",
+    "rows": 96
+  },
+  {
+    "origin_utc": "2026-02-23T19:00:00Z",
+    "weather_run_utc": "2026-02-23T12:00:00Z",
+    "model_version": "hgb-v2-train-before-20260201",
+    "fallback_used": "false",
+    "rows": 96
+  },
+  {
+    "origin_utc": "2026-02-24T19:00:00Z",
+    "weather_run_utc": "2026-02-24T12:00:00Z",
+    "model_version": "hgb-v2-train-before-20260201",
+    "fallback_used": "false",
+    "rows": 96
+  },
+  {
+    "origin_utc": "2026-02-25T19:00:00Z",
+    "weather_run_utc": "2026-02-25T12:00:00Z",
+    "model_version": "hgb-v2-train-before-20260201",
+    "fallback_used": "false",
+    "rows": 96
+  },
+  {
+    "origin_utc": "2026-02-26T19:00:00Z",
+    "weather_run_utc": "2026-02-26T12:00:00Z",
+    "model_version": "hgb-v2-train-before-20260201",
+    "fallback_used": "false",
+    "rows": 96
+  },
+  {
+    "origin_utc": "2026-02-27T19:00:00Z",
+    "weather_run_utc": "2026-02-27T12:00:00Z",
+    "model_version": "hgb-v2-train-before-20260201",
+    "fallback_used": "false",
+    "rows": 96
+  }
+]
