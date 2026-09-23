@@ -1,0 +1,20 @@
+python_version: "3.11"
+internal_timezone: UTC
+timezone: Asia/Almaty
+utc_offset: "+05:00"
+turbines:
+  - turbine_id: turbine_1
+    latitude: null
+    longitude: null
+  - turbine_id: turbine_2
+    latitude: null
+    longitude: null
+weather_model: ecmwf_ifs
+availability_delay_hours: 6
+forecast_origin_local: "00:00"
+horizon: 48
+backtest:
+  origin_start_local: "2026-01-31"
+  origin_end_local: "2026-02-28"
+  origins_inclusive: true
+  archived_weather_forecasts_only: true
