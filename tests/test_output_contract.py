@@ -8,6 +8,17 @@ from pathlib import Path
 
 
 class OutputContractTest(unittest.TestCase):
+    def test_production_forecasts(self):
+        import pandas as pd
+        from src.agent.tools import validate_forecast
+        from src.data.load import LOCAL_TZ
+        path = Path(__file__).resolve().parents[1] / 'outputs' / 'forecasts.csv'
+        frame = pd.read_csv(path, dtype={'fallback_used': str})
+        self.assertEqual(len(frame), 29 * 2 * 48)
+        self.assertTrue(validate_forecast(frame))
+        expected = pd.date_range('2026-01-31', '2026-02-28', tz=LOCAL_TZ).tz_convert('UTC').strftime('%Y-%m-%dT%H:%M:%SZ')
+        self.assertEqual(set(frame.forecast_origin_utc), set(expected))
+
     def test_mock_contract(self):
         path = Path(__file__).resolve().parents[1] / "outputs" / "forecasts_mock.csv"
         with path.open(newline="", encoding="utf-8") as stream:
