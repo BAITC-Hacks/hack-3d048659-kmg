@@ -12,7 +12,9 @@
 .map-caption > span:last-child { font-weight: 500; letter-spacing: 0; border-left: 1px solid var(--line); padding-left: 10px; color: var(--muted); }
 .map-status-dot, .turbine-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--teal); display: inline-block; }
 .turbine-dot.t1 { background: var(--blue); }
-.map-reset { position: absolute; top: 20px; right: 55px; background: #fff; font-size: 12px; min-height: 35px; }
+.map-reset { position: absolute; top: 20px; right: 55px; display: flex; gap: 6px; }
+.map-reset .button { background: #fff; font-size: 12px; min-height: 35px; }
+.map-card-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .map-card { display: grid; text-align: left; width: 167px; padding: 12px 14px; border-radius: 10px; border: 1px solid #d7e0e9; background: #ffffffef; box-shadow: 0 6px 22px #13234320; font-family: "Manrope Variable", sans-serif; }
 .map-card.selected { border: 2px solid var(--blue); padding: 11px 13px; box-shadow: 0 5px 22px #365ef626; }
 .map-card:hover { background: #fff; }

@@ -1,6 +1,9 @@
 export function workspaceFixture() {
   const origin = "2026-01-30T19:00:00Z";
   return {
+    turbines: ["t1", "t2"].map((id, index) => ({ id, name: `Турбина ${index + 1}`, latitude: 43.64, longitude: 78.53,
+      ratedPowerKw: null, dataRevision: 0, modelRevision: null, activeModelId: null,
+      trainingStatus: "idle", createdAt: origin, updatedAt: origin })),
     runs: ["t1", "t2"].map((turbine) => ({
       id: turbine + "-" + Date.parse(origin), turbine, issuedAt: origin,
       weatherIssuedAt: "2026-01-30T12:00:00Z", weatherAvailableAt: "2026-01-30T18:00:00Z",

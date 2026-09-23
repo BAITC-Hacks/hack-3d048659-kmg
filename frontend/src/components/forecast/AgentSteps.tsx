@@ -10,9 +10,9 @@ export default function AgentSteps({ run }: { run: ForecastRun }) {
     {
       label: "Погодные данные",
       icon: CloudSun,
-      summary: run.method === "persistence" ? "Погода не использовалась" : "Архивный выпуск",
-      description: run.method === "persistence"
-        ? "Расчёт сохраняет последнее известное значение мощности и не использует погоду. Время погодного выпуска указывает на доступный по времени кандидат, а не на использованные данные."
+      summary: ["persistence", "autoregressive"].includes(run.method) ? "Погода не использовалась" : "Архивный выпуск",
+      description: ["persistence", "autoregressive"].includes(run.method)
+        ? "Расчёт использует историю измеренной мощности. Ветер и температура не входят в этот прогноз."
         : `Источник: ${run.weatherSource || "не указан"}. Выпуск ${stamp(run.weatherIssuedAt)} UTC, доступен ${stamp(run.weatherAvailableAt)} UTC. ${hasWeather ? "Почасовые значения представлены на странице погоды." : "Почасовые значения этого выпуска отсутствуют в локальном архиве."}`,
     },
     {

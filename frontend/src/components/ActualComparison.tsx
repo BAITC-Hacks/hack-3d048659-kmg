@@ -95,15 +95,14 @@ export function ActualComparison({
     >
       <summary>
         <span>Сравнить с фактической выработкой</span>
-        <span className="disclosure-meta">Измерения · январь</span>
+        <span className="disclosure-meta">Сохранённые измерения</span>
         <ChevronDown size={17} aria-hidden="true" />
       </summary>
       <div className="disclosure-body actual-comparison-body">
         {!latestPoint ? (
           <div className="actual-empty">
             <p className="muted">
-              Измерения недоступны. В наборе сервера есть фактическая выработка
-              за январь 2026 года; измерений за февраль нет.
+              Для этого ветряка пока нет измерений. Загрузите их на странице «Ветряки и данные».
             </p>
             <button className="button" type="button" disabled={refreshing} onClick={onUpdate}>
               <RefreshCw size={16} aria-hidden="true" />
@@ -113,8 +112,7 @@ export function ActualComparison({
         ) : (
           <>
             <p className="actual-demo-note">
-              Измеренная почасовая мощность за январь 2026 года.
-              Измерений за февраль нет.
+              Измеренная почасовая мощность из последней сохранённой версии данных.
             </p>
             <p className="muted actual-cutoff">
               Данные по {stamp(latestPoint)} UTC включительно.
@@ -262,9 +260,8 @@ export function ActualComparison({
                   </>
                 ) : (
                   <p className="muted actual-empty">
-                    Для часов этого выпуска измерений нет. Доступны только
-                    январские измерения; февральский прогноз сравнить с фактом
-                    пока нельзя.
+                    Для часов этого выпуска измерений нет. Загрузите фактические
+                    значения за тот же период, чтобы сравнить их с прогнозом.
                   </p>
                 )}
               </>

@@ -257,7 +257,10 @@ def test_http_routes_recalculate_and_json_errors(archive, monkeypatch):
         assert request(server, 'POST', '/api/forecasts', '{', headers)[0] == 400
         assert request(server, 'POST', '/api/forecasts', '{}', headers)[0] == 422
         assert request(server, 'POST', '/api/forecasts', '{}')[0] == 415
-        assert request(server, 'POST', '/api/forecasts', ' ' * (MAX_BODY_BYTES + 1), headers)[0] == 413
+        # The server rejects the declared size before reading the body. Sending
+        # megabytes concurrently with that rejection races socket closure on Linux.
+        assert request(server, 'POST', '/api/forecasts', None,
+                       {**headers, 'Content-Length': str(MAX_BODY_BYTES + 1)})[0] == 413
         headers['Origin'] = 'https://unrelated.example'
         assert request(server, 'POST', '/api/forecasts', '{}', headers)[0] == 403
         assert request(server, 'GET', '/api/missing')[0] == 404

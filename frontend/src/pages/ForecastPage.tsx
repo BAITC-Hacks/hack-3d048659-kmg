@@ -68,6 +68,7 @@ export default function ForecastPage({
   url,
   navClick,
 }: ForecastPageProps) {
+  if (!run || !selected || !peak) return null;
   return run.status === "error" ? (
     <ErrorPanel
       onPrevious={() => previous && setRunId(previous.id)}
@@ -201,7 +202,7 @@ export default function ForecastPage({
           <div className="disclosure-body">
             <AgentSteps run={run} />
             <div className="agent-bottom">
-              <span>Модель: {run.modelVersion}. Расчёт на архивных данных.</span>
+              <span>Модель: {run.modelVersion}. {run.method === "autoregressive" ? "Расчёт по истории измерений." : "Расчёт на архивных данных."}</span>
               <a
                 className="text-link"
                 href={url("weather")}

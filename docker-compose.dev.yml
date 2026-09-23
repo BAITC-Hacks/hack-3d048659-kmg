@@ -1,0 +1,5 @@
+# Add this override when running the React/Vite frontend on the host.
+services:
+  backend:
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"

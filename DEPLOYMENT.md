@@ -1,90 +1,114 @@
 # Deployment
 
-The application consists of a Python 3.11 API and a React build served by nginx.
-Nginx forwards `/api` to the backend over the private Compose network. Only the
-frontend port is published. Both containers run as nonroot users.
+The stack contains the Python API, React/nginx frontend, MongoDB, Redis, a
+Celery worker, and one Celery beat scheduler. MongoDB is configured as a
+single-member replica set to support transactions. This local setup exposes
+only nginx on `127.0.0.1:8088`.
 
-## Local containers
-
-Install Docker with Compose support. From the repository root:
+## Start and stop
 
 ```bash
 docker compose up --build -d --wait
 docker compose ps
+docker compose logs --tail 100 backend worker scheduler
 ```
 
-Open [http://127.0.0.1:8088](http://127.0.0.1:8088). The first build requires
-network access to install the exact Python dependencies and the npm lockfile.
-The images include saved models, source measurements, forecasts, and weather
-caches. Recalculation supports the 29 archived origins shipped in the repository.
-It does not fetch a forecast for today's date.
+Open [http://127.0.0.1:8088](http://127.0.0.1:8088). The first build downloads
+Python and npm dependencies. `mongo-init` initializes `rs0` and exits normally.
+The API migrates the bundled archive once. Workers and scheduler start after the
+API is healthy. Keep exactly one scheduler running.
 
-The frontend has `/healthz` for static-serving health. The backend health route
-is `/api/health`; `/api/workspace` verifies that archived application data can be
-loaded. Compose starts nginx after the backend passes its health check.
+Stop with `docker compose down`. Named MongoDB and Redis volumes are preserved.
+Do not delete volumes to upgrade an existing installation. Rebuild images and
+restart services; the migration marker protects user updates from reseeding.
 
-Check the integrated stack from `frontend/` after `npm ci`:
-
-```bash
-npm run docker:check
-```
-
-The check verifies both health routes, forecast data for both turbines, client
-routes, JavaScript/CSS/image delivery, cache headers, and API errors. It does not
-create a new forecast. To verify recalculation, open the forecast page and
-recalculate a selected archived release; the returned data should remain
-available after a page reload.
-
-For another published port, set `PORT` before starting Compose. In PowerShell:
+For another local port in PowerShell:
 
 ```powershell
-$env:PORT = "8090"
+$env:PORT = '8091'
 docker compose up --build -d --wait
-cd frontend
-$env:BASE_URL = "http://127.0.0.1:8090"
-npm run docker:check
 ```
 
-On Linux/macOS use `PORT=8090 docker compose up --build -d --wait` and
-`BASE_URL=http://127.0.0.1:8090 npm run docker:check`.
+In a shell supporting inline variables, use `PORT=8091 docker compose up --build
+-d --wait`. A separate `-p project-name` uses independent containers and volumes.
 
-## Stored results
+## Storage and configuration
 
-Committed inputs and `backend/outputs/` stay read-only in the API container.
-The `backend-runtime` named volume is mounted at `/app/backend/.runtime` and
-holds recalculated forecast overrides, logs, and any additional weather cache.
-The image creates that directory with the API user's ownership so a new volume
-is writable without running the service as root. Container restarts and rebuilds
-preserve this volume. `docker compose down` keeps it as well.
+| Setting | Container default |
+| --- | --- |
+| `MONGODB_URI` | `mongodb://mongo:27017/?replicaSet=rs0` |
+| `MONGODB_DATABASE` | `windfarm` |
+| `CELERY_BROKER_URL` | `redis://redis:6379/0` |
+| `PORT` | `8088` |
+| `BIND_ADDRESS` | `127.0.0.1` |
 
-Run `docker compose logs --tail 100 backend frontend` to inspect errors, or
-`docker compose down` to stop the stack. Deleting the runtime volume removes
-recalculations and restores the dashboard to committed archive results on its
-next start; normal deployment does not require deleting it.
+Set the Python settings in the Compose environment block when connecting to
+managed infrastructure. MongoDB must support transactions (replica set/Atlas).
+Database credentials belong in deployment secrets, not source files.
 
-## Hosting
+- `mongo-data`: authoritative windmills, actuals, import audit trail, calculation
+  jobs, model artifacts and predictions. Back up with `mongodump`.
+- `redis-data`: persistent queue transport. MongoDB is the durable job ledger;
+  Redis outages are recovered by redispatching pending jobs.
+- `backend-runtime`: retained for compatibility with the offline archive tools.
+  New training results are stored in MongoDB, not this filesystem volume.
 
-The default bind address is `127.0.0.1`, suitable for a local machine or an
-existing reverse proxy on the host. To publish the port on a server's network
-interfaces, set `BIND_ADDRESS=0.0.0.0` and `PORT` as needed. For a shared service,
-put authentication and HTTPS at your reverse proxy before exposing it: the API
-does not implement accounts or access control. Preserve the original HTTP Host
-header through the proxy so same-origin recalculation requests are accepted.
-Do not publish the backend port directly.
+The web API has no user authentication and is intended for local/trusted use.
+For a shared deployment, add authenticated HTTPS access at a reverse proxy and
+secure MongoDB/Redis appropriately. Preserve the browser Host header through
+nginx for same-origin validation. Do not publicly expose database or broker
+ports. The single MongoDB member is not a high-availability deployment.
 
-A custom nginx deployment must forward `/api` to the API service and preserve
-the incoming Host header, as shown in `frontend/docker/nginx.conf`. A 120-second
-upstream timeout allows time for archived model inference. Fingerprinted assets
-are cached, HTML is revalidated, and API responses use `no-store`.
+## Development
 
-## Development without Docker
+Use the checked-in development override to expose only the API to the host:
 
-Follow [README.md](README.md) to run the API on port 8000 and Vite on port 5173.
-For a production-build preview, use `npm run build` followed by `npm run preview`
-from `frontend/` while the API is running. The preview server proxies `/api` to
-the same local backend. It is a local verification tool, not the container web
-server.
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d backend worker scheduler
+cd frontend
+npm ci
+npm run dev
+```
 
-The dashboard displays historical data: January actuals and 48-hour archived
-forecasts covering late January through early March 2026. February actuals and
-metrics cannot be supplied by the bundled source measurements.
+Vite proxies `/api` to `127.0.0.1:8000`. `API_PORT` can change the published port;
+if you change it, adjust the Vite proxy too. Use Linux containers for Celery;
+Celery's prefork workers are not supported natively on Windows.
+
+For a completely external service setup, install `backend/requirements.txt`, set
+`MONGODB_URI`, `MONGODB_DATABASE`, and `CELERY_BROKER_URL`, then run the API,
+`celery -A src.fleet.tasks:app worker --loglevel=info --concurrency=2`, and
+`celery -A src.fleet.tasks:app beat --loglevel=info` in separate processes. Python
+3.11 is the container/runtime reference version.
+
+## Verification
+
+From `frontend/`, run `npm test`, `npm run build`, and `npm run docker:check`.
+For a custom port set `BASE_URL=http://127.0.0.1:8091` before the container check.
+The smoke check reads health, data, routes and static assets without modifying
+measurements.
+
+Backend tests including the real database integration suite can run in the
+existing stack. In PowerShell from the repository root:
+
+```powershell
+docker compose run --rm --no-deps -e MONGODB_TEST_URI=mongodb://mongo:27017/?replicaSet=rs0 -v "${PWD}/backend/tests:/app/backend/tests:ro" backend python -m pytest -p no:cacheprovider tests
+```
+
+The database tests create uniquely named `windfarm_test_*` databases and remove
+only those test databases afterward. Without `MONGODB_TEST_URI` these integration
+tests are skipped; the offline/unit tests still run.
+
+For an interactive check, add a test windmill in **Ветряки и данные**, import at
+least 120 consecutive hourly samples, and observe `queued → running → succeeded`.
+Open the new forecast, correct one input hour, and verify the model revision
+advances while the previous forecast remains in history. Test inputs should be
+clearly labeled as synthetic and kept separate from actual measurements.
+
+Health `/api/health` checks MongoDB; `/healthz` checks nginx. Job status reports
+worker progress independently: a healthy API does not imply a worker is running.
+Use `docker compose logs worker scheduler` to diagnose stalled jobs. Interrupted
+worker leases are recovered after 20 minutes (up to three attempts). Failed jobs
+can be retried from the UI.
+
+See [DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md) for transaction rules, forecast
+semantics, data limits, model features and collection indexes.

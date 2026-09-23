@@ -2,13 +2,12 @@
 import json
 import logging
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, parse_qs
+import re
 
-from src.api.application import ForecastService
 from src.api.domain import InvalidRequest
-from src.api.infrastructure import ExistingForecastEngine, FilesystemForecastRepository
 
-MAX_BODY_BYTES = 4096
+MAX_BODY_BYTES = 2 * 1024 * 1024
 LOGGER = logging.getLogger(__name__)
 
 
@@ -19,8 +18,8 @@ class ApiError(Exception):
 
 
 def default_service():
-    repository = FilesystemForecastRepository()
-    return ForecastService(repository, ExistingForecastEngine(repository))
+    from src.fleet.service import FleetService
+    return FleetService()
 
 
 def make_server(host='127.0.0.1', port=8000, service=None):
@@ -62,15 +61,24 @@ def make_server(host='127.0.0.1', port=8000, service=None):
             def route():
                 path = urlsplit(self.path).path
                 if path == '/api/health':
-                    return {'status': 'ok'}
+                    return service.health() if hasattr(service, 'health') else {'status': 'ok'}
                 if path == '/api/workspace':
                     return service.workspace()
+                if path == '/api/calculations':
+                    turbine = parse_qs(urlsplit(self.path).query).get('turbine', [None])[0]
+                    return {'calculations': service.calculations(turbine)}
+                job = re.fullmatch(r'/api/calculations/([a-zA-Z0-9_-]+)', path)
+                if job:
+                    return service.calculation(job[1])
                 raise ApiError(404, 'not_found', 'API route not found.')
             self._dispatch(route)
 
         def do_POST(self):
             def route():
-                if urlsplit(self.path).path != '/api/forecasts':
+                path = urlsplit(self.path).path
+                actuals = re.fullmatch(r'/api/turbines/([a-zA-Z0-9_-]+)/actuals', path)
+                training = re.fullmatch(r'/api/turbines/([a-zA-Z0-9_-]+)/train', path)
+                if path not in ('/api/forecasts', '/api/turbines') and not actuals and not training:
                     raise ApiError(404, 'not_found', 'API route not found.')
                 origin = self.headers.get('Origin')
                 if origin:
@@ -91,6 +99,12 @@ def make_server(host='127.0.0.1', port=8000, service=None):
                     payload = json.loads(self.rfile.read(length))
                 except (ValueError, UnicodeError):
                     raise ApiError(400, 'invalid_json', 'Request body must contain valid JSON.') from None
+                if path == '/api/turbines':
+                    return service.create_turbine(payload)
+                if actuals:
+                    return service.import_actuals(actuals[1], payload)
+                if training:
+                    return service.queue_training(training[1], payload)
                 return service.recalculate(payload)
             self._dispatch(route)
 

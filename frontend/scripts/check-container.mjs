@@ -21,11 +21,9 @@ try {
   assert.match(workspaceResponse.headers.get("content-type") || "", /application\/json/);
   const workspace = await workspaceResponse.json();
   assert.ok(Array.isArray(workspace.runs) && workspace.runs.length > 0, "archived forecasts");
-  assert.deepEqual(
-    [...new Set(workspace.runs.map((run) => run.turbine))].sort(),
-    ["t1", "t2"],
-    "forecasts for both turbines",
-  );
+  assert.ok(Array.isArray(workspace.turbines), "dynamic windmill registry");
+  const turbineIds = new Set(workspace.turbines.map((site) => site.id));
+  assert.ok(workspace.runs.every((run) => turbineIds.has(run.turbine)), "forecasts reference registered windmills");
   for (const run of workspace.runs) {
     assert.equal(run.points.length, 48, `${run.id}: complete forecast horizon`);
     assert.ok(run.modelVersion, `${run.id}: model provenance`);
@@ -40,6 +38,8 @@ try {
     "/forecast?turbine=t1&horizon=24",
     "/weather",
     "/history",
+    "/map",
+    "/turbines",
   ]) {
     assert.equal(
       await (await request(path)).text(),

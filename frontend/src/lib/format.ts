@@ -35,4 +35,4 @@ export const stamp = (time: string | null | undefined) =>
 export const hoursLabel = (value: Horizon) =>
   value === 24 ? "24 часа" : "48 часов";
 export const turbineName = (id: TurbineId) =>
-  id === "t1" ? "Турбина 1" : "Турбина 2";
+  id === "t1" ? "Турбина 1" : id === "t2" ? "Турбина 2" : id;

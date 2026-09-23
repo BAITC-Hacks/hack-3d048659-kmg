@@ -1,8 +1,8 @@
 # Ветропрогноз — frontend
 
 React, TypeScript, Vite, Recharts, and Lucide dashboard connected to the Python
-API in [`../backend/`](../backend/README.md). Forecasts, weather, and observations
-come from the backend's archived data. The application has no synthetic data
+API in [`../backend/`](../backend/README.md). Windmills, forecasts and measurements
+come from MongoDB, including the initial bundled archive. The application has no synthetic data
 fallback and reports connection failures in the interface.
 
 ## Development
@@ -16,7 +16,7 @@ npm run dev
 ```
 
 Open [http://127.0.0.1:5173](http://127.0.0.1:5173). Routes are `/forecast`,
-`/weather`, `/map`, and `/history`. Turbine, release, and horizon selections are retained
+`/weather`, `/map`, `/turbines`, and `/history`. Turbine, release, and horizon selections are retained
 in the URL. Vite proxies `/api` to `http://127.0.0.1:8000` while preserving the
 browser's Host header for same-origin validation.
 
@@ -35,18 +35,21 @@ See [DEPLOYMENT.md](../DEPLOYMENT.md).
 
 ## API and data rules
 
-`GET /api/workspace` loads `{ runs, observations, meta }`. Forecast runs include
+`GET /api/workspace` loads `{ turbines, runs, observations, meta }`. Forecast runs include
 their origin, weather issue and availability times, model version, fallback
 information, and hourly power/weather points. Observation batches contain actual
-hourly power by turbine. `POST /api/forecasts` accepts a selected archived origin,
-recalculates both turbines, and returns the updated workspace. Runtime results
-persist on the backend and are available after a page reload.
+hourly power by turbine. `/turbines` provides windmill creation, CSV preview and
+upload, single-hour corrections, retraining and durable calculation status.
+Changes to measurements automatically queue Celery training. Jobs are polled
+every three seconds on the management page; workspace data refreshes while a
+windmill has queued/running work. The API stores results in MongoDB.
 
-- Forecast origins span January 30 at 19:00 UTC through February 27 at 19:00 UTC,
-  2026. Each run has 48 hourly predictions; the UI can display 24 or 48 hours.
-- Observations cover January. The source data ends January 31 local time
-  (UTC+05:00). Missing actuals remain empty, and unavailable metrics are not zero.
-- Weather is the archived forecast used by each run, not current conditions.
+- Initial forecast origins span January 30–February 27, 2026; new models generate
+  releases relative to the latest measured hour. Each run has 48 predictions.
+- The initial observations cover January; users can add later data. Missing
+  actuals remain empty, and unavailable metrics are not zero.
+- Weather is only present for original archived weather-based forecasts.
+  Newly trained autoregressive models return null weather values.
 - Power is normalized to `[0, 1]`. All timestamps are displayed in UTC.
 - Releases and actuals match by turbine and target timestamp. A failed request
   keeps the last successful workspace accessible.
@@ -66,16 +69,17 @@ weather or derive observations from predicted values.
 
 ## 3D turbine map
 
-`/map` lazy-loads MapLibre GL JS and Three.js. Two procedural wind turbine models
-use the positions in `backend/config.yaml` (mirrored in `src/domain/map.ts`).
+`/map` lazy-loads MapLibre GL JS and Three.js. Procedural wind turbine models
+use the dynamic windmill registry's coordinates and names from the API.
 Their dimensions and orientation are illustrative; the map does not imply a
 surveyed turbine shape, terrain elevation, or live rotor telemetry.
 
 - Click a model or its compact power card to select the turbine. Drag to pan,
   use the map controls to zoom, and right-drag or Ctrl-drag to rotate/tilt.
-  “Весь парк” restores the starting view.
+  “Весь парк” fits all windmills; “К ветряку” focuses the selected one.
 - Forecast mode uses the selected archived release and 24/48-hour horizon.
-  Both turbine cards match the same release and exact target hour.
+  Cards match the same release origin and exact target hour. Windmills without
+  a matching release show missing values rather than borrowing another run.
 - “Измерения · архив” uses all available observation hours, independently of
   the selected forecast release. Missing power remains “—”; weather is not
   inferred from predictions in this mode. All displayed times are UTC.
